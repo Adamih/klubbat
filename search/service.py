@@ -1,0 +1,123 @@
+"""Search execution over the FTS5 index.
+
+- Only chunks of current document versions are searchable (older versions stay
+  reachable from document detail pages).
+- Matching chunks are grouped by document so one long PDF cannot dominate results.
+- Snippets come from SQLite with sentinel markers, HTML-escaped here before the
+  markers are replaced with <mark> tags.
+- Every parameter is bound; the SQL contains no string interpolation of user input.
+"""
+
+import html
+import logging
+
+from django.db import connection
+
+log = logging.getLogger(__name__)
+
+MARK_START = "\u27e6"  # ⟦
+MARK_END = "\u27e7"    # ⟧
+
+_MATCHED_SQL = """
+WITH matched AS (
+    SELECT
+        c.id AS chunk_id,
+        dv.id AS version_id,
+        d.id AS document_id,
+        d.title AS document_title,
+        d.doc_type AS doc_type,
+        d.primary_source_url AS source_url,
+        dv.sha256 AS sha256,
+        c.title AS chunk_title,
+        c.page_start AS page_start,
+        c.page_end AS page_end,
+        c.agenda_item_id AS agenda_item_id,
+        bm25(search_chunkfts, 5.0, 1.0) AS rank,
+        snippet(search_chunkfts, 1, '⟦', '⟧', ' … ', 16) AS snippet_raw
+    FROM search_chunkfts f
+    JOIN core_chunk c ON c.id = f.rowid
+    JOIN core_documentversion dv ON dv.id = c.document_version_id
+    JOIN core_document d ON d.id = dv.document_id
+    WHERE search_chunkfts MATCH :q
+      AND dv.id = d.current_version_id
+      AND (:doc_type IS NULL OR d.doc_type = :doc_type)
+      AND EXISTS (
+          SELECT 1
+          FROM core_documentassociation da
+          JOIN core_meeting m ON m.id = da.meeting_id
+          JOIN core_body b ON b.id = m.body_id
+          JOIN core_authority a ON a.id = b.authority_id
+          WHERE da.document_id = d.id
+            AND (:meeting IS NULL OR m.id = :meeting)
+            AND (:authority IS NULL OR a.id = :authority)
+            AND (:body IS NULL OR b.id = :body)
+            AND (:date_from IS NULL OR m.date >= :date_from)
+            AND (:date_to IS NULL OR m.date <= :date_to)
+      )
+)
+"""
+
+_RESULTS_SQL = _MATCHED_SQL + """
+, ranked AS (
+    SELECT matched.*,
+           ROW_NUMBER() OVER (PARTITION BY document_id ORDER BY rank, chunk_id) AS rn,
+           COUNT(*) OVER (PARTITION BY document_id) AS match_count
+    FROM matched
+)
+SELECT * FROM ranked WHERE rn = 1
+ORDER BY rank
+LIMIT :limit OFFSET :offset
+"""
+
+_COUNT_SQL = _MATCHED_SQL + """
+SELECT COUNT(*) FROM (SELECT document_id FROM matched GROUP BY document_id)
+"""
+
+
+def _highlight(snippet_raw: str) -> str:
+    escaped = html.escape(snippet_raw)
+    return escaped.replace(MARK_START, "<mark>").replace(MARK_END, "</mark>")
+
+
+def search(
+    match_expr: str,
+    *,
+    doc_type: str | None = None,
+    meeting_id: int | None = None,
+    authority_id: int | None = None,
+    body_id: int | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> dict:
+    """Run a grouped search. Returns {'total': int, 'results': [dict, ...]}."""
+    params = {
+        "q": match_expr,
+        "doc_type": doc_type,
+        "meeting": meeting_id,
+        "authority": authority_id,
+        "body": body_id,
+        "date_from": date_from,
+        "date_to": date_to,
+        "limit": limit,
+        "offset": offset,
+    }
+    with connection.cursor() as cursor:
+        cursor.execute(_RESULTS_SQL, params)
+        columns = [col[0] for col in cursor.description]
+        rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
+        cursor.execute(_COUNT_SQL, {k: v for k, v in params.items() if k not in ("limit", "offset")})
+        total = cursor.fetchone()[0]
+
+    results = []
+    for row in rows:
+        row["snippet_html"] = _highlight(row.pop("snippet_raw"))
+        results.append(row)
+    return {"total": total, "results": results}
+
+
+def fts_row_count() -> int:
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT COUNT(*) FROM search_chunkfts")
+        return cursor.fetchone()[0]

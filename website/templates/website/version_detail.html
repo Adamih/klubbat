@@ -1,0 +1,30 @@
+{% extends "website/base.html" %}
+{% block title %}Version {{ version.pk }} — {{ document.title }}{% endblock %}
+{% block content %}
+<h1>Version {{ version.pk }}</h1>
+<p class="meta">{{ document.title }} · <a href="{% url 'website:document-detail' document.pk %}">Till dokumentet</a></p>
+<table class="versions">
+    <tr><th>Hämtad</th><th>SHA-256</th><th>Revisionslapp</th><th>Status</th><th>OCR</th><th>Original-URL</th></tr>
+    <tr>
+        <td>{{ version.retrieved_at|date:"Y-m-d H:i" }}</td>
+        <td><code>{{ version.sha256|default_if_none:"–" }}</code></td>
+        <td>{{ version.source_revision_label|default_if_none:"—" }}</td>
+        <td>{{ version.get_processing_status_display }}</td>
+        <td>{% if version.ocr_used %}ja{% else %}nej{% endif %}</td>
+        <td><a href="{{ version.original_url }}">{{ version.original_url }}</a></td>
+    </tr>
+</table>
+{% if version.stored_path %}<p><a href="{% url 'website:version-file' version.pk %}">Bevarad PDF</a></p>{% endif %}
+
+<h2>Text</h2>
+{% if chunks %}
+{% for c in chunks %}
+<details class="chunk" {% if forloop.first %}open{% endif %}>
+    <summary>Seq {{ c.sequence }} · s. {{ c.page_start }}{% if c.page_end != c.page_start %}–{{ c.page_end }}{% endif %}{% if c.agenda_item %} · §{{ c.agenda_item.agenda_number|default_if_none:"–" }}{% endif %} — {{ c.title }}</summary>
+    <pre>{{ c.text }}</pre>
+</details>
+{% endfor %}
+{% else %}
+<p class="notice">Ingen extraherad text för denna version (status: {{ version.get_processing_status_display }}).</p>
+{% endif %}
+{% endblock %}

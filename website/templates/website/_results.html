@@ -1,0 +1,29 @@
+<div id="results">
+{% if error %}
+    <p class="notice">{{ error }}</p>
+{% elif results is None %}
+    <p class="notice">Ange sökord för att söka i protokoll, motioner och bilagor. Använd filter för att begränsa.</p>
+{% elif not results %}
+    <p class="notice">Inga träffar{% if query %} för ”{{ query }}”{% endif %}.</p>
+{% else %}
+    <p class="result-meta">{{ total }} träff(i)ar i dokument — sida {{ page }} av {{ page_count }}</p>
+    <ol class="results">
+        {% for r in results %}
+        <li class="result">
+            <a class="doc-link" href="{% url 'website:document-detail' r.document_id %}">{{ r.document_title }}</a>
+            <div class="meta">{{ r.doc_type_label }} · {{ r.meeting_text }} · s. {{ r.page_start }}</div>
+            <p class="snippet">{{ r.snippet_html|safe }}</p>
+            <div class="links">
+                <a href="{{ r.source_url }}">Originalkälla</a>
+                <a href="{% url 'website:version-file' r.version_id %}">Bevarad PDF</a>
+                {% if r.match_count > 1 %}<span class="more">{{ r.match_count }} träffar i dokumentet</span>{% endif %}
+            </div>
+        </li>
+        {% endfor %}
+    </ol>
+    <div class="pagination">
+        {% if page > 1 %}<a href="?{{ base_qs }}&sida={{ page|add:"-1" }}">Föregående</a>{% endif %}
+        {% if page < page_count %}<a href="?{{ base_qs }}&sida={{ page|add:"+1" }}">Nästa</a>{% endif %}
+    </div>
+{% endif %}
+</div>

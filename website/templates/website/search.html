@@ -1,0 +1,50 @@
+{% extends "website/base.html" %}
+{% block title %}Sök{% endblock %}
+{% block content %}
+<h1>Sök i möteshandlingar</h1>
+<form id="search-form" method="get" action="{% url 'website:search' %}"
+      hx-get="{% url 'website:search' %}" hx-target="#results" hx-select="#results"
+      hx-swap="outerHTML" hx-push-url="true" hx-trigger="submit, change">
+    <input type="search" name="q" value="{{ query }}" placeholder="Sökord, &quot;fras&quot; eller prefix*">
+    <fieldset class="filters">
+        <legend>Filter</legend>
+        <label>Dokumenttyp
+            <select name="typ">
+                <option value="">Alla</option>
+                {% for value, label in doc_types %}
+                <option value="{{ value }}" {% if selected.typ == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>Möte
+            <select name="mote">
+                <option value="">Alla</option>
+                {% for m in meetings %}
+                <option value="{{ m.pk }}" {% if selected.mote == m.pk %}selected{% endif %}>{{ m.date|date:"Y-m-d" }} — {{ m.body.name }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>Myndighet
+            <select name="myndighet">
+                <option value="">Alla</option>
+                {% for a in authorities %}
+                <option value="{{ a.pk }}" {% if selected.myndighet == a.pk %}selected{% endif %}>{{ a.name }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>Organ
+            <select name="organ">
+                <option value="">Alla</option>
+                {% for b in bodies %}
+                <option value="{{ b.pk }}" {% if selected.organ == b.pk %}selected{% endif %}>{{ b.name }} — {{ b.authority.name }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>Från <input type="date" name="fran" value="{{ selected.fran }}"></label>
+        <label>Till <input type="date" name="till" value="{{ selected.till }}"></label>
+    </fieldset>
+    <button type="submit">Sök</button>
+    <a class="reset" href="{% url 'website:search' %}">Rensa</a>
+</form>
+{% include "website/_results.html" %}
+{% endblock %}

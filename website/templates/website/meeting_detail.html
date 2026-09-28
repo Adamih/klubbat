@@ -1,0 +1,42 @@
+{% extends "website/base.html" %}
+{% block title %}{{ meeting.title }}{% endblock %}
+{% block content %}
+<h1>{{ meeting.title }}</h1>
+<p class="meta">
+    {{ meeting.body.name }} · {{ meeting.body.authority.name }} · {{ meeting.date|date:"Y-m-d" }}<br>
+    <a href="{{ meeting.source_url }}">Originalsidan hos källan</a>
+</p>
+
+<h2>Ärenden</h2>
+{% if agenda_items %}
+<ol class="agenda">
+    {% for item in agenda_items %}
+    <li>
+        {% if item.agenda_number is not None %}§ {{ item.agenda_number }}{% if item.agenda_number_end %}–{{ item.agenda_number_end }}{% endif %}: {% endif %}{{ item.title }}
+        {% if item.diarienummer %}<span class="dnr">dnr {{ item.diarienummer }}</span>{% endif %}
+    </li>
+    {% endfor %}
+</ol>
+{% else %}
+<p class="notice">Inga ärenden registrerade för detta möte.</p>
+{% endif %}
+
+<h2>Dokument</h2>
+{% for label, assoc_list in grouped.items %}
+<h3>{{ label }}</h3>
+<ul class="documents">
+    {% for a in assoc_list %}
+    <li>
+        <a href="{% url 'website:document-detail' a.document.pk %}">{{ a.document.title }}</a>
+        {% if a.agenda_item %}<span class="meta">(§ {{ a.agenda_item.agenda_number }}{% if a.agenda_item.agenda_number_end %}–{{ a.agenda_item.agenda_number_end }}{% endif %})</span>{% endif %}
+        {% if a.document.current_version and a.document.current_version.stored_path %}
+        <a href="{% url 'website:version-file' a.document.current_version.pk %}">PDF</a>
+        {% endif %}
+        <a href="{{ a.document.primary_source_url }}">Original</a>
+    </li>
+    {% endfor %}
+</ul>
+{% empty %}
+<p class="notice">Inga dokument kopplade till detta möte.</p>
+{% endfor %}
+{% endblock %}

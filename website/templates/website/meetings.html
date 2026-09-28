@@ -1,0 +1,18 @@
+{% extends "website/base.html" %}
+{% block title %}Möten{% endblock %}
+{% block content %}
+<h1>Möten</h1>
+{% for year, meeting_list in years %}
+<h2>{{ year }}</h2>
+<ul class="meetings">
+    {% for m in meeting_list %}
+    <li>
+        <a href="{% url 'website:meeting-detail' m.pk %}">{{ m.date|date:"Y-m-d" }} — {{ m.title }}</a>
+        <span class="meta">{{ m.body.name }} · {{ m.body.authority.name }}</span>
+    </li>
+    {% endfor %}
+</ul>
+{% empty %}
+<p class="notice">Inga möten inlästa ännu. Kör ingetionskommandona först.</p>
+{% endfor %}
+{% endblock %}
