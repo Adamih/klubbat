@@ -7,6 +7,7 @@ from .models import (
     Authority,
     Body,
     Chunk,
+    Decision,
     Document,
     DocumentAssociation,
     DocumentVersion,
@@ -159,6 +160,14 @@ class VoteReservationAdmin(admin.ModelAdmin):
     list_display = ("vote", "position", "kind", "party_codes", "member_name")
     list_filter = ("kind",)
     search_fields = ("text", "member_name", "party_codes")
+
+
+@admin.register(Decision)
+class DecisionAdmin(admin.ModelAdmin):
+    list_display = ("document_version", "sequence", "printed_agenda_number", "outcome", "parser_version")
+    list_filter = ("outcome",)
+    search_fields = ("decision_text", "printed_agenda_title", "printed_dnr")
+    raw_id_fields = ("document_version", "chunk", "agenda_item")
 
 
 @admin.register(IngestionRun)

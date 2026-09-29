@@ -1,0 +1,57 @@
+{% extends "website/base.html" %}
+{% block title %}{{ item.title }} — {{ meeting.date|date:"Y-m-d" }}{% endblock %}
+{% block content %}
+<h1>
+    {% if item.agenda_number is not None %}§{{ item.agenda_number }}{% if item.agenda_number_end %}–{{ item.agenda_number_end }}{% endif %} · {% endif %}{{ item.title }}
+</h1>
+<p class="meta">
+    <a href="{% url 'website:meeting-detail' meeting.pk %}">{{ meeting.date|date:"Y-m-d" }} — {{ meeting.title }}</a>
+    · {{ meeting.body.name }} ({{ meeting.body.authority.name }})
+    {% if item.diarienummer %} · dnr {{ item.diarienummer }}{% endif %}
+</p>
+
+{% if decisions %}
+<h2>Beslut</h2>
+{% for decision in decisions %}
+<div class="decision-entry">
+    <p class="decision-entry-text">
+        {% if decision.outcome != 'annat' %}<span class="vote-type vote-type-{{ decision.outcome }}">{{ decision.get_outcome_display }}</span>{% endif %}
+        {{ decision.decision_text }}
+    </p>
+    {% if decision.printed_dnr %}<p class="meta">dnr {{ decision.printed_dnr }}</p>{% endif %}
+    {% if decision.chunk %}
+    <p class="vote-source">
+        <a href="{% url 'website:document-detail' decision.document_version.document_id %}#chunk-{{ decision.chunk_id }}">Visa i protokollet (s. {{ decision.chunk.page_start }})</a>
+    </p>
+    {% endif %}
+</div>
+{% endfor %}
+{% else %}
+<p class="notice">Inget beslut är utplockat för detta ärende.</p>
+{% endif %}
+
+{% if votes %}
+<h2>Röstningar</h2>
+<section class="votes" data-doc-title="{{ meeting.title }}">
+    {% for item in votes %}{% include "website/_vote_card.html" with hide_agenda=True %}{% endfor %}
+</section>
+{% endif %}
+
+<h2>Dokument</h2>
+{% if document_rows %}
+<ul class="documents">
+    {% for row in document_rows %}
+    <li>
+        <a href="{% url 'website:document-detail' row.association.document.pk %}">{{ row.association.document.title }}</a>
+        <span class="meta">({{ row.type_label }})</span>
+        {% if row.association.document.current_version and row.association.document.current_version.stored_path %}
+        <a href="{% url 'website:version-file' row.association.document.current_version.pk %}">PDF</a>
+        {% endif %}
+        <a href="{{ row.association.document.primary_source_url }}">Original</a>
+    </li>
+    {% endfor %}
+</ul>
+{% else %}
+<p class="notice">Inga dokument är kopplade till detta ärende.</p>
+{% endif %}
+{% endblock %}

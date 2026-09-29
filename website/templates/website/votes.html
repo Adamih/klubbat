@@ -44,7 +44,7 @@
     <li class="vote-row">
         <p class="meta">
             {% if item.meeting %}<a href="{% url 'website:meeting-detail' item.meeting.pk %}">{{ item.meeting.date|date:"Y-m-d" }}</a>{% endif %}
-            {% if item.vote.agenda_item %} · {% if item.vote.agenda_item.agenda_number %}§{{ item.vote.agenda_item.agenda_number }} {% endif %}{{ item.vote.agenda_item.title|truncatechars:90 }}{% endif %}
+            {% if item.vote.agenda_item %} · <a href="{% url 'website:agenda-item' item.vote.agenda_item.pk %}">{% if item.vote.agenda_item.agenda_number %}§{{ item.vote.agenda_item.agenda_number }} {% endif %}{{ item.vote.agenda_item.title|truncatechars:90 }}</a>{% endif %}
         </p>
         <a class="doc-link" href="{% url 'website:document-detail' item.document.pk %}#vote-{{ item.vote.pk }}">{{ item.document.title }}</a>
         <span class="vote-tally">{{ item.tally_text|default:"röstlängd saknas" }}</span>

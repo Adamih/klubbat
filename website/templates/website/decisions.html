@@ -1,0 +1,60 @@
+{% extends "website/base.html" %}
+{% block title %}Beslut{% endblock %}
+{% block content %}
+<h1>Beslut</h1>
+<p class="meta">
+    {{ total_decisions }} beslut i aktuella dokumentversioner. Besluten är utplockade ur
+    protokollens "Beslut"-block per §-ärende — de flesta fattas utan omröstning; röstningar
+    länkas där de finns.
+</p>
+
+<form method="get" action="{% url 'website:decisions' %}">
+    <fieldset class="filters">
+        <legend>Filter</legend>
+        <label>Typ
+            <select name="typ">
+                <option value="">Alla</option>
+                {% for code, label in outcome_options %}
+                <option value="{{ code }}" {% if selected.typ == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>År
+            <select name="ar">
+                <option value="">Alla</option>
+                {% for y in year_options %}
+                <option value="{{ y }}" {% if selected.ar == y %}selected{% endif %}>{{ y }}</option>
+                {% endfor %}
+            </select>
+        </label>
+    </fieldset>
+    <button type="submit">Filtrera</button>
+    <a class="reset" href="{% url 'website:decisions' %}">Rensa</a>
+</form>
+
+<ul class="decision-list">
+    {% for row in rows %}
+    <li class="decision-row">
+        <p class="meta">
+            {% if row.meeting %}<a href="{% url 'website:meeting-detail' row.meeting.pk %}">{{ row.meeting.date|date:"Y-m-d" }}</a>{% endif %}
+            {% if row.decision.printed_agenda_number %} · §{{ row.decision.printed_agenda_number }}{% endif %}
+            {% if row.decision.printed_dnr %} · dnr {{ row.decision.printed_dnr }}{% endif %}
+        </p>
+        {% if row.decision.agenda_item %}
+        <a class="doc-link" href="{% url 'website:agenda-item' row.decision.agenda_item.pk %}">{{ row.subject|truncatechars:100 }}</a>
+        {% else %}
+        <span class="doc-link">{{ row.subject|truncatechars:100 }}</span>
+        {% endif %}
+        {% if row.decision.outcome != 'annat' %}<span class="vote-type vote-type-{{ row.decision.outcome }}">{{ row.decision.get_outcome_display }}</span>{% endif %}
+        {% for vote in row.votes %}
+        <a class="vote-chip" href="{% url 'website:document-detail' vote.document_version.document_id %}#vote-{{ vote.pk }}"
+           {% if vote.tally_yes is not None %}title="Röstantal: {{ vote.tally_yes }} ja, {{ vote.tally_no }} nej"{% endif %}>Omröstning</a>
+        {% endfor %}
+        <p class="decision-text">{{ row.decision.decision_text|truncatechars:280 }}</p>
+        <p class="meta"><a href="{% url 'website:document-detail' row.document.pk %}#chunk-{{ row.decision.chunk_id|default_if_none:'' }}">{{ row.document.title }}</a></p>
+    </li>
+    {% empty %}
+    <li class="notice">Inga beslut matchar filtret.</li>
+    {% endfor %}
+</ul>
+{% endblock %}

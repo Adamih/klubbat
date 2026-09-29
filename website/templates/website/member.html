@@ -3,12 +3,31 @@
 {% block content %}
 <h1>{{ name }}</h1>
 <p class="meta">
-    {% for p in parties %}<span class="party {{ p.css }}">{{ p.code }}</span> {{ p.label }}{% if not forloop.last %} · {% endif %}{% endfor %}
+    {% if primary_party %}<a href="{% url 'website:party' primary_party %}"><span class="party {{ parties.0.css }}">{{ parties.0.code }}</span> {{ parties.0.label }}</a>{% endif %}
     · {{ rows|length }} röstningar
     {% for s in stance_counts %}{% if s.count %} · {{ s.count }} {{ s.label|lower }}{% endif %}{% endfor %}
+    {% if alignment_pct is not None %} · på vinnande sida i {{ alignment_pct }} % ({{ decided_count }} avgjorda){% endif %}
+    {% if deviations %} · {{ deviations|length }} avvikelser från partilinjen{% endif %}
 </p>
 <p class="meta">Historiken matchas på namn i protokollen; ledamöter med samma namn kan inte särskiljas.
 {% if variants|length > 1 %} Namnvarianter som slagits samman: {{ variants|join:", " }}.{% endif %}</p>
+
+{% if deviations %}
+<h2>Avvikelser från partilinjen</h2>
+<ul class="member-votes">
+    {% for d in deviations %}
+    <li class="member-vote-row">
+        <p class="meta">
+            {% if d.vote.meeting_date %}{{ d.vote.meeting_date|date:"Y-m-d" }}{% endif %}
+            · {{ d.vote.document_version.document.title }}
+        </p>
+        <a class="doc-link" href="{% url 'website:document-detail' d.vote.document_version.document_id %}#vote-{{ d.vote.pk }}">{{ d.subject|truncatechars:90 }}</a>
+        <span class="stance-badge stance-{{ d.stance }}">{{ d.stance|capfirst }}</span>
+        <span class="meta">partiet: {{ d.party_stance }}</span>
+    </li>
+    {% endfor %}
+</ul>
+{% endif %}
 
 <ul class="member-votes">
     {% for row in rows %}

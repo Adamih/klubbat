@@ -30,6 +30,7 @@ Skapa en adminanvändare för /admin/: `uv run python manage.py createsuperuser`
 | `ingest_recent --days 60` | Återbesök senaste periodens möten, hämta om dokument (senutgåvor/korrigeringar), extrahera. |
 | `process_versions --status pending` | Extrahera + chunka sparade versioner. `--document-id`/`--version-id` för riktnade körningar. Återanvänder cachead extraktionstext ur `data/derived/` när extractor-versionen stämmer (OCR-kostnaden betalas bara en gång). |
 | `extract_votes [--force]` | Parsa röstningar (parti- och namngrupperade) ur extraherad text. Idempotent; hoppar över versioner med aktuell parser-version. |
+| `extract_decisions [--force]` | Parsa beslutblock ("§ N … Beslut") per ärende ur protokollens text. Idempotent, protokoll endast. |
 | `retry_failed` | Ladda om misslyckade nedladdningar, köa om misslyckad extraktion. |
 | `rebuild_search_index` | Bygg om FTS5-index från sparade chunks. |
 | `backup_database [--originals] [--no-derived]` | SQLite-onlinebackup (WAL-säkert) till `backups/`, inklusive `data/derived/` (extraktionscachen: sidecars + OCR-PDF:er). |

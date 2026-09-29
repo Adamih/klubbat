@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 
 log = logging.getLogger(__name__)
 
-VOTE_PARSER_VERSION = "omrostningsdetaljer-v4"
+VOTE_PARSER_VERSION = "omrostningsdetaljer-v5"
 
 # "Omröstningsdetaljer" introduces a block of named voter lists.
 MARKER_RE = re.compile(r"Omröstningsdetaljer", re.IGNORECASE)
@@ -87,10 +87,11 @@ RESERVATION_HEADING_STRIP_RE = re.compile(
 # Agenda item heading as printed in protocols: "§ 123 Svar på motion om att
 # utreda en breddning av Kungsängsbron från Therez Almerfors (M)
 # KSN-2024-03238 Beslut". The title runs to the optional diarienummer or the
-# "Beslut" keyword that starts the decision text.
+# "Beslut" keyword that starts the decision text. Shared by the decision
+# parser (ingestion/decisions.py).
 AGENDA_HEADING_RE = re.compile(
     r"§\s*(?P<number>\d{1,3})\s+"
-    r"(?P<title>[^§\n]{3,200}?)"
+    r"(?P<title>[^§\n]{3,300}?)"
     r"(?:\s+(?P<dnr>[A-ZÅÄÖ]{2,6}-\d{4}-\d{3,6}))?"
     r"\s+Beslut\b"
 )

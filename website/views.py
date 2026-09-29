@@ -2,46 +2,21 @@
 
 import datetime
 import math
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 
 from django.conf import settings
-from django.db.models import Count, Exists, Max, Min, OuterRef
-from django.http import FileResponse, Http404
-from django.shortcuts import get_object_or_404, render
-
-from core.models import (
-    Authority,
-    Body,
-    Chunk,
-    Document,
-    DocumentAssociation,
-    DocumentVersion,
-    IngestionRun,
-    Meeting,
-    Vote,
-    VoteRecord,
-)
-from core.parties import party_css_class, party_label
-from search import service
-from search.query import build_match_query
-
-PAGE_SIZE = 20
-_TYPE_LABELS = dict(Document.DocType.choices)
-_STANCE_ORDER = ("ja", "nej", "avstar", "franvarande")
-_STANCE_LABELS = dict(Vote.Stance.choices)
-
-
-from django.conf import settings
-from django.db.models import Count, Exists, Max, Min, OuterRef
+from django.db.models import Count, Exists, Max, Min, OuterRef, Q
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, render
 from django.utils.text import slugify
 
 from core.models import (
+    AgendaItem,
     Authority,
     Body,
     Chunk,
+    Decision,
     Document,
     DocumentAssociation,
     DocumentVersion,
@@ -336,7 +311,7 @@ def meeting_detail_view(request, pk):
     meeting = get_object_or_404(
         Meeting.objects.select_related("body", "body__authority"), pk=pk
     )
-    agenda_items = meeting.agenda_items.all().order_by("agenda_number", "id")
+    agenda_items = list(meeting.agenda_items.all().order_by("agenda_number", "id"))
     associations = (
         meeting.document_associations.select_related("document", "agenda_item", "document__current_version")
         .order_by("document__doc_type", "document__title")
@@ -369,7 +344,28 @@ def meeting_detail_view(request, pk):
                 votes_by_document.get(association.document_id, [])
             )
 
-    agenda_rows = [{"item": item, "votes": votes_by_item.get(item.pk, [])} for item in agenda_items]
+    # Parsed decisions mapped onto agenda items: via the resolved agenda item
+    # FK, or the printed § number when resolution did not match.
+    number_to_item = {item.agenda_number: item.pk for item in agenda_items if item.agenda_number is not None}
+    decision_by_item: dict[int, Decision] = {}
+    if current_version_ids:
+        for decision in (
+            Decision.objects.filter(document_version_id__in=current_version_ids)
+            .select_related("document_version__document")
+            .order_by("sequence")
+        ):
+            target = decision.agenda_item_id or number_to_item.get(decision.printed_agenda_number)
+            if target:
+                decision_by_item.setdefault(target, decision)
+
+    agenda_rows = [
+        {
+            "item": item,
+            "votes": votes_by_item.get(item.pk, []),
+            "decision": decision_by_item.get(item.pk),
+        }
+        for item in agenda_items
+    ]
     for assoc_list in grouped.values():
         for association in assoc_list:
             doc_votes = votes_by_document.get(association.document_id, [])
@@ -496,6 +492,47 @@ def member_view(request, slug):
         )
     party_options = sorted(party_codes, key=party_codes.get, reverse=True)
 
+    # Majority alignment and party-line deviations across the named votes.
+    # The party line is the party's own ja/nej majority in each vote; a
+    # deviation is a member voting against it when the line is not a tie.
+    vote_records: dict[int, list[dict]] = defaultdict(list)
+    for row in VoteRecord.objects.filter(vote_id__in=[vote.pk for vote in votes]).values(
+        "vote_id", "party_code", "stance"
+    ):
+        vote_records[row["vote_id"]].append(row)
+
+    decided = 0
+    won = 0
+    deviations = []
+    subject_by_vote = {row["vote"].pk: row["subject"] for row in rows}
+    for vote in votes:
+        record = record_by_vote.get(vote.pk)
+        if record is None or record.stance not in ("ja", "nej"):
+            continue
+        others = vote_records.get(vote.pk, [])
+        yes = vote.tally_yes if vote.tally_yes is not None else sum(1 for r in others if r["stance"] == "ja")
+        no = vote.tally_no if vote.tally_no is not None else sum(1 for r in others if r["stance"] == "nej")
+        if yes != no:
+            decided += 1
+            if (record.stance == "ja") == (yes > no):
+                won += 1
+        party_stances = [
+            r["stance"]
+            for r in others
+            if r["party_code"] == record.party_code and r["stance"] in ("ja", "nej")
+        ]
+        if len(party_stances) >= 2:
+            majority_stance, majority_count = Counter(party_stances).most_common(1)[0]
+            if majority_count > len(party_stances) - majority_count and record.stance != majority_stance:
+                deviations.append(
+                    {
+                        "vote": vote,
+                        "stance": record.stance,
+                        "party_stance": majority_stance,
+                        "subject": subject_by_vote.get(vote.pk, "Röstning"),
+                    }
+                )
+
     return render(
         request,
         "website/member.html",
@@ -507,10 +544,215 @@ def member_view(request, slug):
                 {"code": code, "label": party_label(code), "css": party_css_class(code)}
                 for code in party_options
             ],
+            "primary_party": party_options[0] if party_options else None,
             "stance_counts": [
                 {"label": _STANCE_LABELS[stance], "count": stance_counts[stance]}
                 for stance in _STANCE_ORDER
             ],
+            "rows": rows,
+            "alignment_pct": round(100 * won / decided) if decided else None,
+            "decided_count": decided,
+            "deviations": deviations,
+        },
+    )
+
+
+def decisions_view(request):
+    """Chronological feed of parsed agenda-item decisions in current versions."""
+    current_ids = list(
+        Document.objects.exclude(current_version=None).values_list("current_version_id", flat=True)
+    )
+    base = Decision.objects.filter(document_version_id__in=current_ids)
+    outcome = request.GET.get("typ", "").strip() or None
+    year = _int_param(request, "ar")
+
+    decisions = (
+        base.select_related("agenda_item", "chunk", "document_version__document")
+        .annotate(meeting_date=Min("document_version__document__associations__meeting__date"))
+        .order_by("-meeting_date", "document_version_id", "sequence")
+    )
+    if outcome:
+        decisions = decisions.filter(outcome=outcome)
+    if year:
+        decisions = decisions.filter(meeting_date__year=year)
+
+    votes_by_item: dict[int, list[Vote]] = defaultdict(list)
+    for vote in Vote.objects.filter(document_version_id__in=current_ids):
+        if vote.agenda_item_id:
+            votes_by_item[vote.agenda_item_id].append(vote)
+
+    rows = []
+    for decision in decisions:
+        document = decision.document_version.document
+        association = document.associations.first()
+        rows.append(
+            {
+                "decision": decision,
+                "document": document,
+                "meeting": association.meeting if association else None,
+                "subject": decision.agenda_item.title if decision.agenda_item else decision.printed_agenda_title,
+                "votes": votes_by_item.get(decision.agenda_item_id, []) if decision.agenda_item_id else [],
+            }
+        )
+
+    year_options = [d.year for d in Meeting.objects.dates("date", "year", order="DESC")]
+    return render(
+        request,
+        "website/decisions.html",
+        {
+            "rows": rows,
+            "total_decisions": base.count(),
+            "outcome_options": Decision.Outcome.choices,
+            "year_options": year_options,
+            "selected": {"typ": outcome, "ar": year},
+        },
+    )
+
+
+def agenda_item_view(request, pk):
+    """One agenda item: its decision, recorded votes, and attached documents."""
+    item = get_object_or_404(
+        AgendaItem.objects.select_related("meeting", "meeting__body", "meeting__body__authority"),
+        pk=pk,
+    )
+    meeting = item.meeting
+    current_ids = list(
+        meeting.document_associations.exclude(document__current_version=None).values_list(
+            "document__current_version_id", flat=True
+        )
+    )
+    decision_filter = Q(agenda_item=item)
+    if item.agenda_number is not None:
+        decision_filter |= Q(printed_agenda_number=item.agenda_number)
+    decisions = list(
+        Decision.objects.filter(document_version_id__in=current_ids)
+        .filter(decision_filter)
+        .select_related("chunk", "document_version__document")
+        .order_by("document_version_id", "sequence")
+    )
+
+    votes = (
+        Vote.objects.filter(document_version_id__in=current_ids, agenda_item=item)
+        .select_related("chunk", "agenda_item")
+        .prefetch_related("records", "reservations")
+        .order_by("document_version_id", "sequence")
+    )
+    shaped_votes = _shape_votes(votes, seat_count=meeting.body.seat_count)
+    documents = (
+        DocumentAssociation.objects.filter(agenda_item=item)
+        .select_related("document", "document__current_version")
+    )
+    document_rows = [
+        {
+            "association": association,
+            "type_label": _TYPE_LABELS.get(association.document.doc_type, association.document.doc_type),
+        }
+        for association in documents
+    ]
+
+    return render(
+        request,
+        "website/agenda_item.html",
+        {
+            "item": item,
+            "meeting": meeting,
+            "decisions": decisions,
+            "votes": shaped_votes,
+            "document_rows": document_rows,
+        },
+    )
+
+
+def party_view(request, code):
+    """Voting statistics for one party across current document versions."""
+    code = code.strip().upper()
+    current_ids = list(
+        Document.objects.exclude(current_version=None).values_list("current_version_id", flat=True)
+    )
+    records = list(
+        VoteRecord.objects.filter(party_code=code, vote__document_version_id__in=current_ids)
+        .select_related("vote", "vote__document_version__document", "vote__agenda_item")
+    )
+    if not records:
+        raise Http404("Ingen röstning registrerad för partiet.")
+
+    stance_counts = {stance: 0 for stance in _STANCE_ORDER}
+    members: dict[str, int] = {}
+    stances_by_vote: dict[int, Counter] = defaultdict(Counter)
+    for record in records:
+        stance_counts[record.stance] += 1
+        members[record.member_name] = members.get(record.member_name, 0) + 1
+        stances_by_vote[record.vote_id][record.stance] += 1
+
+    # Overall ja/nej per vote (tallies when printed, else the named records).
+    vote_ids = list(stances_by_vote)
+    overall: dict[int, Counter] = defaultdict(Counter)
+    for row in VoteRecord.objects.filter(vote_id__in=vote_ids, stance__in=("ja", "nej")).values(
+        "vote_id", "stance"
+    ):
+        overall[row["vote_id"]][row["stance"]] += 1
+
+    unanimous = 0
+    decided = 0
+    won = 0
+    for vote_id, positions in stances_by_vote.items():
+        own = {s: n for s, n in positions.items() if s in ("ja", "nej")}
+        if not own:
+            continue
+        decided += 1
+        if len(own) == 1:
+            unanimous += 1
+        party_side = max(own, key=own.get)
+        vote = next(v for v in records if v.vote_id == vote_id).vote
+        yes = vote.tally_yes if vote.tally_yes is not None else overall[vote_id]["ja"]
+        no = vote.tally_no if vote.tally_no is not None else overall[vote_id]["nej"]
+        if yes != no and party_side == ("ja" if yes > no else "nej"):
+            won += 1
+
+    votes = (
+        Vote.objects.filter(pk__in=vote_ids)
+        .annotate(meeting_date=Min("document_version__document__associations__meeting__date"))
+        .select_related("document_version__document", "agenda_item")
+        .order_by("-meeting_date", "document_version_id", "sequence")
+    )
+    rows = []
+    for vote in votes[:15]:
+        positions = stances_by_vote[vote.pk]
+        parts = [
+            f"{positions[stance]} {_STANCE_PART_LABELS[stance]}"
+            for stance in _STANCE_ORDER
+            if positions.get(stance)
+        ]
+        agenda_title = vote.agenda_item.title if vote.agenda_item else vote.agenda_title
+        rows.append(
+            {
+                "vote": vote,
+                "document": vote.document_version.document,
+                "subject": agenda_title or vote.proposition or "Röstning",
+                "position": " · ".join(parts),
+            }
+        )
+
+    member_rows = [
+        {"name": name, "slug": slugify(name), "count": count}
+        for name, count in sorted(members.items(), key=lambda pair: (-pair[1], pair[0]))
+    ]
+    return render(
+        request,
+        "website/party.html",
+        {
+            "code": code,
+            "label": party_label(code),
+            "css": party_css_class(code),
+            "stance_counts": [
+                {"label": _STANCE_LABELS[stance], "count": stance_counts[stance]}
+                for stance in _STANCE_ORDER
+            ],
+            "vote_count": len(vote_ids),
+            "unanimity_pct": round(100 * unanimous / decided) if decided else None,
+            "win_pct": round(100 * won / decided) if decided else None,
+            "decided_count": decided,
+            "members": member_rows,
             "rows": rows,
         },
     )

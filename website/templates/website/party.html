@@ -1,0 +1,33 @@
+{% extends "website/base.html" %}
+{% block title %}{{ label }} — röststatistik{% endblock %}
+{% block content %}
+<h1><span class="party {{ css }}">{{ code }}</span> {{ label }}</h1>
+<p class="meta">
+    {{ vote_count }} omröstningar med partiets ledamöter
+    {% for s in stance_counts %}{% if s.count %} · {{ s.count }} {{ s.label|lower }}{% endif %}{% endfor %}
+    {% if unanimity_pct is not None %} · enighet i {{ unanimity_pct }} % av röstningarna{% endif %}
+    {% if win_pct is not None %} · på vinnande sida i {{ win_pct }} %{% endif %}
+</p>
+<p class="meta">Statistiken bygger på namngivna röster i aktuella protokollversioner; "på vinnande sida" jämför partiets sida med den sida som fick flest röster.</p>
+
+<h2>Röstningar</h2>
+<ul class="member-votes">
+    {% for row in rows %}
+    <li class="member-vote-row">
+        <p class="meta">
+            {% if row.vote.meeting_date %}{{ row.vote.meeting_date|date:"Y-m-d" }}{% endif %}
+            · {{ row.document.title }}
+        </p>
+        <a class="doc-link" href="{% url 'website:document-detail' row.document.pk %}#vote-{{ row.vote.pk }}">{{ row.subject|truncatechars:90 }}</a>
+        <span class="party-position">{{ row.position }}</span>
+    </li>
+    {% empty %}
+    <li class="notice">Inga röstningar hittades.</li>
+    {% endfor %}
+</ul>
+
+<h2>Ledamöter</h2>
+<p class="vote-members">
+    {% for m in members %}<a href="{% url 'website:member' m.slug %}">{{ m.name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}
+</p>
+{% endblock %}

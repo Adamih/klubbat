@@ -165,6 +165,8 @@ class DocumentVersion(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     # Latest vote-parser stage (stage C) that produced this version's Vote rows.
     vote_parser_version = models.CharField(max_length=100, null=True, blank=True)
+    # Latest decision-parser stage that produced this version's Decision rows.
+    decision_parser_version = models.CharField(max_length=100, null=True, blank=True)
 
     class Meta:
         constraints = [
@@ -260,6 +262,45 @@ class Vote(models.Model):
 
     def __str__(self) -> str:
         return f"vote v{self.document_version_id} #{self.sequence}"
+
+
+class Decision(models.Model):
+    """One recorded decision (stage C output), parsed from a protocol's
+    "§ N <title> … Beslut" block. Most decisions are unanimous and never reach
+    a Vote; the printed decision text is the content."""
+
+    class Outcome(models.TextChoices):
+        BIFALL = "bifall", "Bifall"
+        AVSLAG = "avslag", "Avslag"
+        AVVISNING = "avvisning", "Avvisning"
+        ATEREMITTERA = "ateremittera", "Återremittering"
+        BORDLAGGNING = "bordlaggning", "Bordläggning"
+        VAL = "val", "Val/förordnande"
+        PROCEDUR = "procedur", "Procedurellt"
+        ANNAT = "annat", "Annat"
+
+    document_version = models.ForeignKey(DocumentVersion, on_delete=models.CASCADE, related_name="decisions")
+    chunk = models.ForeignKey(Chunk, null=True, blank=True, on_delete=models.SET_NULL, related_name="decisions")
+    agenda_item = models.ForeignKey(AgendaItem, null=True, blank=True, on_delete=models.SET_NULL, related_name="decisions")
+    sequence = models.IntegerField()  # order of the decision within the version
+    # Agenda item as printed in the protocol heading, used as the subject when
+    # no AgendaItem row matches.
+    printed_agenda_number = models.IntegerField(null=True, blank=True)
+    printed_agenda_title = models.CharField(max_length=300, blank=True)
+    printed_dnr = models.CharField(max_length=100, blank=True)
+    decision_text = models.TextField()
+    outcome = models.CharField(max_length=20, choices=Outcome.choices, default=Outcome.ANNAT)
+    parser_version = models.CharField(max_length=100)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["document_version", "sequence"], name="uniq_decision_version_seq"),
+        ]
+        ordering = ["document_version_id", "sequence"]
+
+    def __str__(self) -> str:
+        return f"decision v{self.document_version_id} #{self.sequence}"
 
 
 class VoteReservation(models.Model):

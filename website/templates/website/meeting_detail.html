@@ -12,8 +12,15 @@
 <ol class="agenda">
     {% for row in agenda_rows %}
     <li>
-        {% if row.item.agenda_number is not None %}§ {{ row.item.agenda_number }}{% if row.item.agenda_number_end %}–{{ row.item.agenda_number_end }}{% endif %}: {% endif %}{{ row.item.title }}
+        {% if row.item.agenda_number is not None %}<a href="{% url 'website:agenda-item' row.item.pk %}">§ {{ row.item.agenda_number }}{% if row.item.agenda_number_end %}–{{ row.item.agenda_number_end }}{% endif %}</a>: {% endif %}{{ row.item.title }}
         {% if row.item.diarienummer %}<span class="dnr">dnr {{ row.item.diarienummer }}</span>{% endif %}
+        {% if row.decision %}
+        <p class="agenda-decision">
+            {% if row.decision.outcome != 'annat' %}<span class="vote-type vote-type-{{ row.decision.outcome }}">{{ row.decision.get_outcome_display }}</span>{% endif %}
+            {{ row.decision.decision_text|truncatechars:180 }}
+            <a href="{% url 'website:agenda-item' row.item.pk %}">mer</a>
+        </p>
+        {% endif %}
         {% for vote in row.votes %}
         <a class="vote-chip" href="{% url 'website:document-detail' vote.document_version.document_id %}#vote-{{ vote.pk }}"
            {% if vote.tally_yes is not None %}title="Röstantal: {{ vote.tally_yes }} ja, {{ vote.tally_no }} nej"{% endif %}>Omröstning</a>

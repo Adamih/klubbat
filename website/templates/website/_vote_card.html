@@ -1,0 +1,75 @@
+{% comment %}
+One vote card: summary row + proposition, decision, party chips, members,
+reservations, warnings, source link, and AI explainer. Expects a shaped vote
+row (`item`) from _shape_votes.
+Flags: chunk_local — the protocol chunk is rendered on this page, so the
+source link can use a plain #chunk anchor (document detail). hide_agenda —
+skip the agenda line (agenda item page: the title is already the heading).
+{% endcomment %}
+<details class="vote" id="vote-{{ item.vote.pk }}">
+    <summary>
+        <span class="vote-number">{% if forloop %}#{{ forloop.counter }}{% endif %}</span>
+        {% if item.type %}<span class="vote-type vote-type-{{ item.type.code }}">{{ item.type.label }}</span>{% endif %}
+        <span class="vote-tally">{{ item.tally_text|default:"röstlängd saknas" }}</span>
+        <span class="vote-label">{{ item.label|truncatechars:80 }}</span>
+    </summary>
+    <div class="vote-body">
+        {% if item.agenda and not hide_agenda %}
+        <p class="vote-agenda">
+            {% if item.agenda.number is not None %}§{{ item.agenda.number }} · {% endif %}{% if item.vote.agenda_item %}<a href="{% url 'website:agenda-item' item.vote.agenda_item.pk %}">{{ item.agenda.title }}</a>{% else %}{{ item.agenda.title }}{% endif %}
+        </p>
+        {% endif %}
+        {% if item.vote.proposition %}<p class="vote-proposition"><strong>Omröstningsproposition:</strong> {{ item.vote.proposition }}</p>{% endif %}
+        {% if item.type or item.decision or item.margin is not None %}
+        <p class="vote-decision">
+            {% if item.type %}<span class="vote-type vote-type-{{ item.type.code }}">{{ item.type.label }}</span>{% endif %}
+            {% if item.decision %}<strong>Beslut:</strong> {{ item.decision }}{% endif %}
+            {% if item.margin is not None %}<span class="vote-margin">marginal {{ item.margin }} röster</span>{% endif %}
+        </p>
+        {% endif %}
+        {% if item.vote.outcome_text %}<p class="vote-outcome">{{ item.vote.outcome_text }}</p>{% endif %}
+        {% if item.parties %}
+        <div class="party-positions">
+            {% for p in item.parties %}
+            <span class="party-position"><a href="{% url 'website:party' p.code %}"><span class="party {{ p.css }}" title="{{ p.label }}">{{ p.code }}</span></a> {{ p.parts|join:" · " }}</span>
+            {% endfor %}
+        </div>
+        {% for group in item.stance_groups %}
+        <p class="vote-members">
+            <strong>{{ group.label }}</strong>
+            {% for r in group.records %}<a href="{% url 'website:member' r.slug %}">{{ r.name }}</a> ({{ r.party }}){% if not forloop.last %}, {% endif %}{% endfor %}
+        </p>
+        {% endfor %}
+        {% endif %}
+        {% if item.reservations %}
+        <div class="vote-reservations">
+            <h4>Reservationer och särskilda yttranden</h4>
+            {% for r in item.reservations %}
+            <div class="vote-reservation">
+                <p class="vote-reservation-meta">
+                    <span class="vote-reservation-kind">{{ r.kind_label }}</span>
+                    {% for chip in r.party_chips %}<span class="party {{ chip.css }}">{{ chip.code }}</span> {% endfor %}
+                    {{ r.member_name }}
+                </p>
+                <p class="vote-reservation-text">{{ r.text }}</p>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% for warning in item.sanity %}<p class="notice">OBS: {{ warning }}</p>{% endfor %}
+        {% if item.vote.chunk_id %}
+        <p class="vote-source">
+            {% if chunk_local %}
+            <a href="#chunk-{{ item.vote.chunk_id }}">Visa i text (s. {{ item.vote.chunk.page_start }})</a>
+            {% else %}
+            <a href="{% url 'website:document-detail' item.vote.document_version.document_id %}#chunk-{{ item.vote.chunk_id }}">Visa i text (s. {{ item.vote.chunk.page_start }})</a>
+            {% endif %}
+        </p>
+        {% endif %}
+        <div class="ai-vote" data-chunk-id="{{ item.vote.chunk_id|default_if_none:'' }}">
+            <button type="button" class="ai-vote-button">Förklara röstningen</button>
+            <p class="ai-status" hidden></p>
+            <div class="ai-output" hidden></div>
+        </div>
+    </div>
+</details>

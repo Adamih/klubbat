@@ -35,7 +35,7 @@ from core.models import (
     Meeting,
 )
 
-from . import chunking, extract, votes
+from . import chunking, decisions, extract, votes
 from .adapters.base import SourceAdapter
 from .adapters.uppsala import get_adapter_class
 from .fetch import Fetcher, FetchError, looks_like_pdf
@@ -436,6 +436,62 @@ def extract_votes(
         stats["versions"] += 1
         stats["votes"] += created_votes
         stats["records"] += created_records
+    if stats["failures"]:
+        run.save(update_fields=["failures"])
+    return stats
+
+
+def extract_decisions(
+    *,
+    run: IngestionRun,
+    version_ids: list[int] | None = None,
+    document_id: int | None = None,
+    limit: int | None = None,
+    force: bool = False,
+) -> dict:
+    """Stage C: parse agenda-item decision blocks from chunk text.
+
+    Mirrors extract_votes: versions stamped with the current decision-parser
+    version are skipped unless force=True; one failure never aborts the run.
+    Only protocols are parsed — committee reports (ärende) print the same
+    "§ N … Beslut" structure, but as the board's proposal, not the council's
+    decision, and mixing them would double every agenda item.
+    """
+    queryset = DocumentVersion.objects.filter(
+        processing_status=DocumentVersion.Status.PROCESSED,
+        document__doc_type=Document.DocType.PROTOCOL,
+    )
+    if not force:
+        queryset = queryset.filter(
+            Q(decision_parser_version__isnull=True) | ~Q(decision_parser_version=decisions.DECISION_PARSER_VERSION)
+        )
+    if version_ids:
+        queryset = queryset.filter(id__in=version_ids)
+    if document_id:
+        queryset = queryset.filter(document_id=document_id)
+    queryset = queryset.order_by("id")
+    if limit:
+        queryset = queryset[:limit]
+
+    stats = {"versions": 0, "decisions": 0, "failures": 0}
+    for version in queryset:
+        chunks = [
+            {"pk": chunk.pk, "agenda_item": chunk.agenda_item_id, "text": chunk.text}
+            for chunk in version.chunks.order_by("sequence")
+        ]
+        try:
+            parsed = decisions.parse_decisions(chunks)
+        except Exception as exc:  # noqa: BLE001 - recorded per version, run continues
+            log.error("Decision extraction failed for version %s: %s", version.pk, exc)
+            run.failures += 1
+            stats["failures"] += 1
+            continue
+        with transaction.atomic():
+            created = decisions.store(version, chunks, parsed)
+            version.decision_parser_version = decisions.DECISION_PARSER_VERSION
+            version.save(update_fields=["decision_parser_version"])
+        stats["versions"] += 1
+        stats["decisions"] += created
     if stats["failures"]:
         run.save(update_fields=["failures"])
     return stats

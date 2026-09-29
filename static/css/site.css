@@ -222,6 +222,21 @@ ul.member-votes { list-style: none; padding-left: 0; }
 .stance-avstar { background: #6b6b6b; }
 .stance-franvarande { background: #9a9a9a; }
 
+ul.decision-list { list-style: none; padding-left: 0; }
+.decision-row {
+    margin: 1rem 0; padding-bottom: 0.9rem; border-bottom: 1px solid var(--line);
+}
+.decision-row .vote-tally, .decision-row .vote-chip, .decision-row .vote-type { margin-left: 0.35rem; }
+.decision-text { margin: 0.35rem 0; color: #333; }
+.decision-entry { margin: 0.5rem 0; }
+.decision-entry-text { margin: 0.25rem 0; }
+.decision-entry-text .vote-type { margin-right: 0.4rem; }
+.agenda-decision {
+    margin: 0.3rem 0; color: #444; font-size: 0.9rem;
+    display: flex; flex-wrap: wrap; gap: 0.25rem 0.5rem; align-items: baseline;
+}
+.agenda-decision a { color: var(--accent); white-space: nowrap; }
+
 footer { border-top: 1px solid var(--line); margin-top: 2rem; }
 footer p { max-width: 62rem; margin: 0 auto; padding: 1rem 1.25rem; color: #555; font-size: 0.85rem; }
 
