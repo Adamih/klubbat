@@ -17,15 +17,26 @@
   `Vote`/`VoteRecord` rows, stamped via `DocumentVersion.vote_parser_version`
   (idempotent delete+recreate). Runs after extraction in `backfill` and
   `ingest_recent`. Parser: `ingestion/votes.py` (`omrostningsdetaljer-v3`).
-- UI surface 1: "Röstningar" section on the document page (tally, proposition,
+
+## UI surfaces (done 2026-09-29)
+
+- Surface 1: "Röstningar" section on the document page (tally, proposition,
   outcome, per-party matrix, named members, "Visa i text" anchor) with party
   chips in `core/parties.py` + `static/css/site.css`; `static/js/votes.js`
-  opens the referenced text chunk.
+  opens any anchored `<details>` (`#chunk-*` / `#vote-*`).
+- Surface 2: "Röstningar" index page (`/rostningar/`, nav entry) — newest
+  first, per-vote meeting/agenda link, tally and per-stance party strip;
+  filters on parti (via `Exists` on `VoteRecord`) and år (meeting date).
+- Surface 3: vote chips on meeting detail — agenda-item chips for documents
+  bound to an item, "Röstningar (n)" chips on the document entries for
+  protocols (chunk-level agenda binding is not available in the source data,
+  so votes reach items through each document's association).
+- Search: "Har röstning" checkbox filters FTS results to documents whose
+  current version has votes (`search/service.py` CTE).
 
 ## Next (not started)
 
-- Surface 2: "Röstningar" index page in the nav — chronological list with
-  party-stance strip, filterable by party/year.
-- Surface 3: vote chip next to the agenda item on meeting detail.
-- Search: optional "har omröstning" filter chip on the search page.
 - AI summary prompt on the document page can include structured vote data.
+- Chunk-level agenda-item binding (`build_chunks` receives no agenda numbers
+  today) would let meeting chips point at the exact agenda item for protocol
+  votes; needs a chunker-version bump + cheap reprocess from cached sidecars.

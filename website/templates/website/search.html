@@ -42,6 +42,9 @@
         </label>
         <label>Från <input type="date" name="fran" value="{{ selected.fran }}"></label>
         <label>Till <input type="date" name="till" value="{{ selected.till }}"></label>
+        <label class="check">Har röstning
+            <input type="checkbox" name="rostning" value="1" {% if selected.rostning %}checked{% endif %}>
+        </label>
     </fieldset>
     <button type="submit">Sök</button>
     <a class="reset" href="{% url 'website:search' %}">Rensa</a>

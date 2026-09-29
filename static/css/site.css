@@ -152,6 +152,21 @@ table.vote-parties td:first-child { text-align: left; }
 .vote-members { font-size: 0.9rem; color: #444; overflow-wrap: anywhere; }
 .vote-source a { color: var(--accent); font-size: 0.9rem; }
 
+ul.vote-list { list-style: none; padding-left: 0; }
+.vote-row { margin: 1rem 0; padding-bottom: 0.9rem; border-bottom: 1px solid var(--line); }
+.vote-row .vote-tally { font-weight: 600; }
+.vote-row .vote-label { color: #444; font-size: 0.9rem; margin: 0.35rem 0; }
+.stance-strip { display: flex; flex-wrap: wrap; gap: 0.35rem 1.25rem; margin: 0.45rem 0; font-size: 0.9rem; }
+.stance-strip strong { font-weight: 600; color: #555; margin-right: 0.3rem; }
+.stance-entry { margin-right: 0.75rem; white-space: nowrap; }
+.vote-chip {
+    display: inline-block; margin-left: 0.4rem; padding: 0 0.5rem;
+    font-size: 0.78rem; font-weight: 600; text-decoration: none;
+    color: #fff; background: var(--accent); border-radius: 999px;
+}
+.vote-chip:hover { text-decoration: none; background: #164a6e; }
+.filters label.check { flex-direction: row; align-items: center; gap: 0.4rem; justify-content: flex-end; }
+
 footer { border-top: 1px solid var(--line); margin-top: 2rem; }
 footer p { max-width: 62rem; margin: 0 auto; padding: 1rem 1.25rem; color: #555; font-size: 0.85rem; }
 

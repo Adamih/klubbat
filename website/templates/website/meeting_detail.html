@@ -8,12 +8,16 @@
 </p>
 
 <h2>Ärenden</h2>
-{% if agenda_items %}
+{% if agenda_rows %}
 <ol class="agenda">
-    {% for item in agenda_items %}
+    {% for row in agenda_rows %}
     <li>
-        {% if item.agenda_number is not None %}§ {{ item.agenda_number }}{% if item.agenda_number_end %}–{{ item.agenda_number_end }}{% endif %}: {% endif %}{{ item.title }}
-        {% if item.diarienummer %}<span class="dnr">dnr {{ item.diarienummer }}</span>{% endif %}
+        {% if row.item.agenda_number is not None %}§ {{ row.item.agenda_number }}{% if row.item.agenda_number_end %}–{{ row.item.agenda_number_end }}{% endif %}: {% endif %}{{ row.item.title }}
+        {% if row.item.diarienummer %}<span class="dnr">dnr {{ row.item.diarienummer }}</span>{% endif %}
+        {% for vote in row.votes %}
+        <a class="vote-chip" href="{% url 'website:document-detail' vote.document_version.document_id %}#vote-{{ vote.pk }}"
+           {% if vote.tally_yes is not None %}title="Röstantal: {{ vote.tally_yes }} ja, {{ vote.tally_no }} nej"{% endif %}>Omröstning</a>
+        {% endfor %}
     </li>
     {% endfor %}
 </ol>
@@ -29,6 +33,9 @@
     <li>
         <a href="{% url 'website:document-detail' a.document.pk %}">{{ a.document.title }}</a>
         {% if a.agenda_item %}<span class="meta">(§ {{ a.agenda_item.agenda_number }}{% if a.agenda_item.agenda_number_end %}–{{ a.agenda_item.agenda_number_end }}{% endif %})</span>{% endif %}
+        {% if a.first_vote %}
+        <a class="vote-chip" href="{% url 'website:document-detail' a.document_id %}#vote-{{ a.first_vote.pk }}">Röstningar ({{ a.vote_count }})</a>
+        {% endif %}
         {% if a.document.current_version and a.document.current_version.stored_path %}
         <a href="{% url 'website:version-file' a.document.current_version.pk %}">PDF</a>
         {% endif %}

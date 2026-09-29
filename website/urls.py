@@ -8,6 +8,7 @@ urlpatterns = [
     path("", views.search_view, name="search"),
     path("moter/", views.meetings_view, name="meetings"),
     path("moter/<int:pk>/", views.meeting_detail_view, name="meeting-detail"),
+    path("rostningar/", views.votes_view, name="votes"),
     path("dokument/<int:pk>/", views.document_detail_view, name="document-detail"),
     path("dokument/version/<int:version_pk>/", views.version_detail_view, name="version-detail"),
     path("dokument/version/<int:version_pk>/fil/", views.version_file_view, name="version-file"),

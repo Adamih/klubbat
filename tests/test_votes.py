@@ -3,8 +3,9 @@
 import pytest
 from django.urls import reverse
 
-from core.models import Chunk, DocumentVersion, Vote, VoteRecord
+from core.models import AgendaItem, Chunk, DocumentAssociation, DocumentVersion, Vote, VoteRecord
 from ingestion import pipeline, votes
+from search import service
 
 pytestmark = pytest.mark.django_db
 
@@ -218,4 +219,100 @@ def test_document_detail_without_votes_hides_section(client, stored_version):
     document, version = _processed_version(stored_version)
     res = client.get(reverse("website:document-detail", args=[document.pk]))
     assert res.status_code == 200
-    assert "Röstningar" not in res.content.decode()
+    assert '<section class="votes">' not in res.content.decode()
+
+
+def _seed_vote_chunks(document, version, with_agenda_item=None):
+    Chunk.objects.create(
+        document_version=version,
+        sequence=999,  # past any chunks created by a real extraction
+        title=f"{document.title} — §12 Trafikfrågan",
+        text=f"Omröstningsdetaljer\n{JA_LIST}\n{NEJ_LIST}",
+        page_start=23,
+        page_end=23,
+        processing_version="test",
+        agenda_item=with_agenda_item,
+    )
+
+
+def test_votes_page_lists_votes_and_filters(client, stored_version):
+    document, version = _processed_version(stored_version)
+    _seed_vote_chunks(document, version)
+    pipeline.extract_votes(run=pipeline.begin_run("test"), version_ids=[version.id])
+
+    res = client.get(reverse("website:votes"))
+    assert res.status_code == 200
+    content = res.content.decode()
+    assert document.title in content
+    assert "Socialdemokraterna" in content  # party options + strip labels
+    assert 'href="/dokument/' in content
+
+    # Party filter: the vote has both S and M records; C has none.
+    res_s = client.get(reverse("website:votes"), {"parti": "S"})
+    assert document.title in res_s.content.decode()
+    res_c = client.get(reverse("website:votes"), {"parti": "C"})
+    assert "Inga röstningar matchar filtret" in res_c.content.decode()
+
+    # Year filter follows the meeting date (2025-01-27 in the fixture).
+    res_year = client.get(reverse("website:votes"), {"ar": "2025"})
+    assert document.title in res_year.content.decode()
+    res_old = client.get(reverse("website:votes"), {"ar": "2024"})
+    assert "Inga röstningar matchar filtret" in res_old.content.decode()
+
+
+def test_meeting_detail_shows_vote_chip(client, stored_version, source_tree):
+    _, _, meeting = source_tree
+    document, version = _processed_version(stored_version)
+    agenda_item = AgendaItem.objects.create(meeting=meeting, agenda_number=12, title="Trafikfrågan")
+    association = DocumentAssociation.objects.get(document=document, meeting=meeting)
+    association.agenda_item = agenda_item
+    association.save(update_fields=["agenda_item"])
+    _seed_vote_chunks(document, version)
+    pipeline.extract_votes(run=pipeline.begin_run("test"), version_ids=[version.id])
+
+    res = client.get(reverse("website:meeting-detail", args=[meeting.pk]))
+    assert res.status_code == 200
+    content = res.content.decode()
+    assert "vote-chip" in content
+    assert f"#vote-{Vote.objects.get().pk}" in content
+    assert "Röstningar (1)" in content  # chip on the document entry too
+
+
+def test_meeting_detail_without_votes_has_no_chip(client, stored_version, source_tree):
+    _, _, meeting = source_tree
+    document, version = _processed_version(stored_version)
+    AgendaItem.objects.create(meeting=meeting, agenda_number=12, title="Trafikfrågan")
+    res = client.get(reverse("website:meeting-detail", args=[meeting.pk]))
+    assert res.status_code == 200
+    assert "vote-chip" not in res.content.decode()
+
+
+def test_search_service_has_votes_filter(stored_version):
+    document, version = _processed_version(stored_version)
+    run = pipeline.begin_run("test")
+    pipeline.process_versions(run=run, version_ids=[version.id], statuses=[DocumentVersion.Status.PROCESSED])
+
+    assert service.search("Spårvägen", has_votes=None)["total"] == 1
+    assert service.search("Spårvägen", has_votes=True)["total"] == 0
+
+    _seed_vote_chunks(document, version)
+    pipeline.extract_votes(run=pipeline.begin_run("test"), version_ids=[version.id])
+    assert service.search("Spårvägen", has_votes=True)["total"] == 1
+    assert service.search("Spårvägen", has_votes=False)["total"] == 1
+
+
+def test_search_view_vote_filter_checkbox(client, stored_version):
+    document, version = _processed_version(stored_version)
+    run = pipeline.begin_run("test")
+    pipeline.process_versions(run=run, version_ids=[version.id], statuses=[DocumentVersion.Status.PROCESSED])
+
+    res = client.get(reverse("website:search"), {"q": "Spårvägen", "rostning": "1"})
+    assert res.status_code == 200
+    content = res.content.decode()
+    assert "Har röstning" in content
+    assert 'name="rostning" value="1" checked' in content
+
+    _seed_vote_chunks(document, version)
+    pipeline.extract_votes(run=pipeline.begin_run("test"), version_ids=[version.id])
+    res = client.get(reverse("website:search"), {"q": "Spårvägen", "rostning": "1"})
+    assert document.title in res.content.decode()

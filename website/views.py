@@ -6,7 +6,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from django.conf import settings
-from django.db.models import Count, Max, Min
+from django.db.models import Count, Exists, Max, Min, OuterRef
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, render
 
@@ -20,6 +20,7 @@ from core.models import (
     IngestionRun,
     Meeting,
     Vote,
+    VoteRecord,
 )
 from core.parties import party_css_class, party_label
 from search import service
@@ -56,6 +57,18 @@ def _shape_votes(votes):
             )
         parties.sort(key=lambda p: (-p["stances"].get("ja", 0), -p["total"], p["code"]))
 
+        # Compact per-stance party strip for list views (vote index page).
+        strip = []
+        for stance in _STANCE_ORDER[:3]:
+            entries = [
+                {"code": code, "css": party_css_class(code), "count": counts[code][stance]}
+                for code in counts
+                if counts[code].get(stance)
+            ]
+            entries.sort(key=lambda e: -e["count"])
+            if entries:
+                strip.append({"label": _STANCE_LABELS[stance], "entries": entries})
+
         tally_parts = []
         if vote.tally_yes is not None:
             tally_parts.append(f"{vote.tally_yes} ja")
@@ -75,6 +88,7 @@ def _shape_votes(votes):
                 "label": vote.proposition or (vote.chunk.title if vote.chunk else "Röstning"),
                 "tally_text": " · ".join(tally_parts),
                 "parties": parties,
+                "strip": strip,
                 "stance_groups": [
                     {
                         "label": _STANCE_LABELS.get(stance, stance),
@@ -133,6 +147,7 @@ def search_view(request):
     body_id = _int_param(request, "organ")
     date_from = _date_param(request, "fran")
     date_to = _date_param(request, "till")
+    has_votes = request.GET.get("rostning", "").strip() == "1"
     page = max(1, _int_param(request, "sida") or 1)
 
     error = None
@@ -153,6 +168,7 @@ def search_view(request):
                 body_id=body_id,
                 date_from=date_from,
                 date_to=date_to,
+                has_votes=has_votes,
                 limit=PAGE_SIZE,
                 offset=(page - 1) * PAGE_SIZE,
             )
@@ -168,6 +184,7 @@ def search_view(request):
                     body_id=body_id,
                     date_from=date_from,
                     date_to=date_to,
+                    has_votes=has_votes,
                     limit=PAGE_SIZE,
                     offset=(page - 1) * PAGE_SIZE,
                 )
@@ -203,6 +220,7 @@ def search_view(request):
                 "organ": body_id,
                 "fran": date_from,
                 "till": date_to,
+                "rostning": has_votes,
             },
             "meetings": Meeting.objects.order_by("-date")[:200],
             "authorities": Authority.objects.all(),
@@ -235,10 +253,99 @@ def meeting_detail_view(request, pk):
     grouped = defaultdict(list)
     for association in associations:
         grouped[_TYPE_LABELS.get(association.document.doc_type, association.document.doc_type)].append(association)
+
+    # Recorded votes for this meeting's documents' current versions. Votes
+    # reach agenda items through each document's association; protocols (no
+    # item binding) get their chip on the document entry instead.
+    current_version_ids = {
+        association.document.current_version_id
+        for association in associations
+        if association.document.current_version_id
+    }
+    votes = (
+        Vote.objects.filter(document_version_id__in=current_version_ids)
+        .select_related("document_version")
+        .order_by("sequence")
+    )
+    votes_by_document: dict[int, list[Vote]] = defaultdict(list)
+    for vote in votes:
+        votes_by_document[vote.document_version.document_id].append(vote)
+
+    votes_by_item: dict[int, list[Vote]] = defaultdict(list)
+    for association in associations:
+        if association.agenda_item_id:
+            votes_by_item[association.agenda_item_id].extend(
+                votes_by_document.get(association.document_id, [])
+            )
+
+    agenda_rows = [{"item": item, "votes": votes_by_item.get(item.pk, [])} for item in agenda_items]
+    for assoc_list in grouped.values():
+        for association in assoc_list:
+            doc_votes = votes_by_document.get(association.document_id, [])
+            association.vote_count = len(doc_votes)
+            association.first_vote = doc_votes[0] if doc_votes else None
+
     return render(
         request,
         "website/meeting_detail.html",
-        {"meeting": meeting, "agenda_items": agenda_items, "grouped": dict(sorted(grouped.items()))},
+        {
+            "meeting": meeting,
+            "agenda_rows": agenda_rows,
+            "grouped": dict(sorted(grouped.items())),
+        },
+    )
+
+
+def votes_view(request):
+    """Chronological index of recorded votes in current document versions."""
+    current_ids = list(
+        Document.objects.exclude(current_version=None).values_list("current_version_id", flat=True)
+    )
+    base_votes = Vote.objects.filter(document_version_id__in=current_ids)
+    party = request.GET.get("parti", "").strip().upper() or None
+    year = _int_param(request, "ar")
+
+    votes = (
+        base_votes.select_related("document_version__document", "agenda_item", "chunk")
+        .prefetch_related("records", "document_version__document__associations__meeting")
+        .annotate(meeting_date=Min("document_version__document__associations__meeting__date"))
+        .order_by("-meeting_date", "document_version_id", "sequence")
+    )
+    if party:
+        votes = votes.filter(
+            Exists(VoteRecord.objects.filter(vote_id=OuterRef("pk"), party_code=party))
+        )
+    if year:
+        votes = votes.filter(meeting_date__year=year)
+
+    shaped = _shape_votes(votes)
+    for row, vote in zip(shaped, votes):
+        document = vote.document_version.document
+        row["document"] = document
+        association = document.associations.first()
+        row["meeting"] = association.meeting if association else None
+
+    party_codes = (
+        VoteRecord.objects.filter(vote__document_version_id__in=current_ids)
+        .values_list("party_code", flat=True)
+        .distinct()
+    )
+    party_options = sorted(
+        {(code, party_label(code)) for code in party_codes}, key=lambda pair: pair[1]
+    )
+    year_options = [d.year for d in Meeting.objects.dates("date", "year", order="DESC")]
+
+    return render(
+        request,
+        "website/votes.html",
+        {
+            "votes": shaped,
+            "total_votes": base_votes.count(),
+            "total_records": VoteRecord.objects.filter(vote__document_version_id__in=current_ids).count(),
+            "party_options": party_options,
+            "year_options": year_options,
+            "selected": {"parti": party, "ar": year},
+        },
     )
 
 

@@ -17,7 +17,7 @@
 <section class="votes">
     <h2>Röstningar</h2>
     {% for item in votes %}
-    <details class="vote">
+    <details class="vote" id="vote-{{ item.vote.pk }}">
         <summary>
             <span class="vote-number">#{{ forloop.counter }}</span>
             <span class="vote-tally">{{ item.tally_text|default:"röstlängd saknas" }}</span>

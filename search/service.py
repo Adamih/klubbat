@@ -41,6 +41,10 @@ WITH matched AS (
     WHERE search_chunkfts MATCH :q
       AND dv.id = d.current_version_id
       AND (:doc_type IS NULL OR d.doc_type = :doc_type)
+      AND (:has_votes IS NULL OR EXISTS (
+          SELECT 1 FROM core_vote v
+          WHERE v.document_version_id = d.current_version_id
+      ))
       AND EXISTS (
           SELECT 1
           FROM core_documentassociation da
@@ -88,6 +92,7 @@ def search(
     body_id: int | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    has_votes: bool | None = None,
     limit: int = 20,
     offset: int = 0,
 ) -> dict:
@@ -100,6 +105,7 @@ def search(
         "body": body_id,
         "date_from": date_from,
         "date_to": date_to,
+        "has_votes": 1 if has_votes else None,
         "limit": limit,
         "offset": offset,
     }

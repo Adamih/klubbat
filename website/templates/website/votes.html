@@ -1,0 +1,58 @@
+{% extends "website/base.html" %}
+{% block title %}Röstningar{% endblock %}
+{% block content %}
+<h1>Röstningar</h1>
+<p class="meta">
+    {{ total_votes }} omröstningar i aktuella dokumentversioner · {{ total_records }} namngivna röster.
+    Namnlistor finns bara där röstlängd förts i protokollet; övriga visar enbart röstantal.
+</p>
+
+<form method="get" action="{% url 'website:votes' %}">
+    <fieldset class="filters">
+        <legend>Filter</legend>
+        <label>Parti
+            <select name="parti">
+                <option value="">Alla</option>
+                {% for code, label in party_options %}
+                <option value="{{ code }}" {% if selected.parti == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>År
+            <select name="ar">
+                <option value="">Alla</option>
+                {% for y in year_options %}
+                <option value="{{ y }}" {% if selected.ar == y %}selected{% endif %}>{{ y }}</option>
+                {% endfor %}
+            </select>
+        </label>
+    </fieldset>
+    <button type="submit">Filtrera</button>
+    <a class="reset" href="{% url 'website:votes' %}">Rensa</a>
+</form>
+
+<ul class="vote-list">
+    {% for item in votes %}
+    <li class="vote-row">
+        <p class="meta">
+            {% if item.meeting %}<a href="{% url 'website:meeting-detail' item.meeting.pk %}">{{ item.meeting.date|date:"Y-m-d" }}</a>{% endif %}
+            {% if item.vote.agenda_item %} · {% if item.vote.agenda_item.agenda_number %}§{{ item.vote.agenda_item.agenda_number }} {% endif %}{{ item.vote.agenda_item.title|truncatechars:90 }}{% endif %}
+        </p>
+        <a class="doc-link" href="{% url 'website:document-detail' item.document.pk %}#vote-{{ item.vote.pk }}">{{ item.document.title }}</a>
+        <span class="vote-tally">{{ item.tally_text|default:"röstlängd saknas" }}</span>
+        {% if item.strip %}
+        <p class="stance-strip">
+            {% for group in item.strip %}
+            <span class="stance-group"><strong>{{ group.label }}:</strong>
+                {% for entry in group.entries %}<span class="stance-entry"><span class="party {{ entry.css }}">{{ entry.code }}</span> {{ entry.count }}</span>{% endfor %}
+            </span>
+            {% endfor %}
+        </p>
+        {% endif %}
+        {% if item.vote.proposition %}<p class="vote-label">{{ item.vote.proposition|truncatechars:140 }}</p>{% endif %}
+    </li>
+    {% empty %}
+    <li class="notice">Inga röstningar matchar filtret.</li>
+    {% endfor %}
+</ul>
+{% endblock %}
