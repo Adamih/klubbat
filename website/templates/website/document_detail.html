@@ -4,6 +4,15 @@
 <h1>{{ document.title }}</h1>
 <p class="meta">{{ doc_type_label }} · <a href="{{ document.primary_source_url }}">Originalkälla</a></p>
 
+{% if chunks %}
+<section class="ai-summary" data-doc-title="{{ document.title }}" data-doc-type="{{ doc_type_label }}">
+    <h2>Sammanfattning med AI</h2>
+    <button type="button" id="ai-summary-button">Sammanfatta</button>
+    <p id="ai-summary-status" class="ai-status" hidden></p>
+    <div id="ai-summary-output" class="ai-output" hidden></div>
+</section>
+{% endif %}
+
 <h2>Kopplingar</h2>
 <ul class="associations">
     {% for a in associations %}

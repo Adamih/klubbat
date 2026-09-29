@@ -77,7 +77,22 @@ SHA-256 — kopior är per definition identiska).
 | Pipeline | `ingestion/pipeline.py` — orkestrering, korta transaktioner, locking, versionering |
 | Sök | `search/` — FTS5 (unicode61, diakriter bevarade), BM25 med titelvikt, gruppering per dokument, escapade snippet-markeringar |
 | Webb | `website/` — serverrenderade mallar + HTMX; Sök, Möten, Mötesdetalj, Dokumentdetalj, Versioner, Status |
+| AI (BYO-modell) | `static/js/ai.js` + Inställningar-sidan — sammanfattning direkt från webbläsaren |
 | Admin | `core/admin.py` — inspektion, metadata, retry-åtgärder |
+
+## AI-funktioner (bring your own model)
+
+Dokumentsidan har en knapp **Sammanfatta** som låter en vald LLM sammanfatta
+dokumentets aktuella text. Modellen konfigureras under **Inställningar**
+(`/installningar/`) och anropas direkt från webbläsaren mot ett Chat
+Completions-API (t.ex. OpenRouter: bas-URL `https://openrouter.ai/api/v1`).
+
+- API-nyckeln lagras endast i webbläsarens localStorage — aldrig på servern,
+  i databasen eller i loggar. Inga inloggningar krävs.
+- API-nyckeln kan lämnas tomt för endpoint:er utan autentisering (t.ex. lokal
+  Ollama, som kräver `OLLAMA_ORIGINS` satt för CORS).
+- Inga AI-svar sparas; varje klick gör ett nytt anrop. Dokumentets text skickas
+  till modellens leverantör och behandlas enligt deras villkor.
 
 ### Datamodellens nyckelregler
 

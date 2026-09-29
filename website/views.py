@@ -234,6 +234,11 @@ def version_file_view(request, version_pk):
     return response
 
 
+def settings_view(request):
+    """AI provider settings live in the browser's localStorage; this page is just the form."""
+    return render(request, "website/settings.html")
+
+
 def status_view(request):
     coverage = Meeting.objects.aggregate(earliest=Min("date"), latest=Max("date"))
     version_counts = {

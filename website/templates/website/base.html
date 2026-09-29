@@ -7,6 +7,7 @@
     <title>{% block title %}Politisk dokumentintelligens{% endblock %}</title>
     <link rel="stylesheet" href="{% static 'css/site.css' %}">
     <script src="{% static 'vendor/htmx.min.js' %}" defer></script>
+    <script src="{% static 'js/ai.js' %}" defer></script>
 </head>
 <body>
 <header class="site-header">
@@ -15,6 +16,7 @@
         <a href="{% url 'website:search' %}">Sök</a>
         <a href="{% url 'website:meetings' %}">Möten</a>
         <a href="{% url 'website:status' %}">Status</a>
+        <a href="{% url 'website:settings' %}">Inställningar</a>
         <a href="/admin/">Admin</a>
     </nav>
 </header>

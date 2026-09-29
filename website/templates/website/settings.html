@@ -1,0 +1,40 @@
+{% extends "website/base.html" %}
+{% block title %}Inställningar — AI{% endblock %}
+{% block content %}
+<h1>Inställningar — AI</h1>
+<p class="meta">Modellen anropas direkt från din webbläsare. API-nyckeln lagras endast här i
+webbläsaren (localStorage) och skickas aldrig till denna server.</p>
+
+<form id="ai-settings-form" class="ai-form">
+    <label>Bas-URL
+        <input id="ai-base-url" type="url" placeholder="https://openrouter.ai/api/v1" required>
+    </label>
+    <label>API-nyckel
+        <input id="ai-api-key" type="password" placeholder="sk-or-…" autocomplete="off">
+    </label>
+    <label>Modell
+        <input id="ai-model" type="text" placeholder="anthropic/claude-sonnet-4" required>
+    </label>
+    <div class="ai-actions">
+        <button type="submit">Spara</button>
+        <button type="button" id="ai-test-button" class="secondary">Testa anslutning</button>
+        <button type="button" id="ai-clear-button" class="secondary">Rensa</button>
+    </div>
+</form>
+<p id="ai-settings-status" class="ai-status" hidden></p>
+
+<h2>Så fungerar det</h2>
+<ul>
+    <li><strong>Bas-URL</strong> är API-roten utan <code>/chat/completions</code>. För OpenRouter:
+        <code>https://openrouter.ai/api/v1</code>. Även andra endpoint:er som talar Chat
+        Completions-format fungerar (t.ex. lokal Ollama: <code>http://localhost:11434/v1</code>).</li>
+    <li><strong>Modell</strong> anges i leverantörens format, t.ex.
+        <code>anthropic/claude-sonnet-4</code> hos OpenRouter.</li>
+    <li><strong>API-nyckel</strong> kan lämnas tomt för endpoint:er som inte kräver autentisering
+        (t.ex. lokal Ollama).</li>
+    <li>Endpointen måste tillåta anrop direkt från webbläsaren (CORS). OpenRouter gör det; lokal
+        Ollama kräver att <code>OLLAMA_ORIGINS</code> är satt.</li>
+    <li>Den text som sammanfattas (dokumentets innehåll) skickas till modellens leverantör och
+        behandlas enligt deras villkor.</li>
+</ul>
+{% endblock %}
