@@ -118,6 +118,40 @@ details.chunk pre {
     font-family: inherit; font-size: 0.9rem; border-top: 1px solid var(--line);
 }
 
+.votes details.vote { margin: 0.6rem 0; background: #fff; border: 1px solid var(--line); border-radius: 4px; }
+.votes details.vote summary {
+    cursor: pointer; padding: 0.5rem 0.75rem;
+    display: flex; flex-wrap: wrap; gap: 0.25rem 0.6rem; align-items: baseline;
+}
+.vote-number { font-weight: 700; color: var(--accent); }
+.vote-tally { font-weight: 600; white-space: nowrap; }
+.vote-label { color: #444; }
+.vote-body { padding: 0.5rem 0.9rem 0.9rem; border-top: 1px solid var(--line); }
+.vote-body p { margin: 0.4rem 0; }
+.vote-outcome { color: #555; font-size: 0.9rem; }
+table.vote-parties { border-collapse: collapse; font-size: 0.9rem; margin: 0.5rem 0; background: #fff; }
+table.vote-parties th, table.vote-parties td {
+    border: 1px solid var(--line); padding: 0.25rem 0.6rem; text-align: center;
+}
+table.vote-parties th { background: #eee9df; }
+table.vote-parties td:first-child { text-align: left; }
+.party {
+    display: inline-block; min-width: 1.6em; padding: 0 0.25rem; border-radius: 3px;
+    color: #fff; font-size: 0.78rem; font-weight: 700; text-align: center;
+}
+.party-s { background: #c73e3a; }
+.party-v { background: #8b1a1a; }
+.party-mp { background: #3f9142; }
+.party-c { background: #2f7a3d; }
+.party-l { background: #00a3c8; }
+.party-kd { background: #28356e; }
+.party-m { background: #1a4a7a; }
+.party-sd { background: #4b7bb5; }
+.party-up { background: #6d5f8e; }
+.party-other { background: #6b6b6b; }
+.vote-members { font-size: 0.9rem; color: #444; overflow-wrap: anywhere; }
+.vote-source a { color: var(--accent); font-size: 0.9rem; }
+
 footer { border-top: 1px solid var(--line); margin-top: 2rem; }
 footer p { max-width: 62rem; margin: 0 auto; padding: 1rem 1.25rem; color: #555; font-size: 0.85rem; }
 

@@ -19,12 +19,74 @@ from core.models import (
     DocumentVersion,
     IngestionRun,
     Meeting,
+    Vote,
 )
+from core.parties import party_css_class, party_label
 from search import service
 from search.query import build_match_query
 
 PAGE_SIZE = 20
 _TYPE_LABELS = dict(Document.DocType.choices)
+_STANCE_ORDER = ("ja", "nej", "avstar", "franvarande")
+_STANCE_LABELS = dict(Vote.Stance.choices)
+
+
+def _shape_votes(votes):
+    """Shape Vote rows for the template: party stance matrix + member lists."""
+    shaped = []
+    for vote in votes:
+        counts: dict[str, dict[str, int]] = {}
+        members: dict[str, list] = {}
+        for record in vote.records.all():
+            per_party = counts.setdefault(record.party_code, {})
+            per_party[record.stance] = per_party.get(record.stance, 0) + 1
+            members.setdefault(record.stance, []).append(record)
+
+        parties = []
+        for code in counts:
+            stances = {s: counts[code][s] for s in _STANCE_ORDER if counts[code].get(s)}
+            parties.append(
+                {
+                    "code": code,
+                    "label": party_label(code),
+                    "css": party_css_class(code),
+                    "stances": stances,
+                    "total": sum(stances.values()),
+                }
+            )
+        parties.sort(key=lambda p: (-p["stances"].get("ja", 0), -p["total"], p["code"]))
+
+        tally_parts = []
+        if vote.tally_yes is not None:
+            tally_parts.append(f"{vote.tally_yes} ja")
+        if vote.tally_no is not None:
+            tally_parts.append(f"{vote.tally_no} nej")
+        if vote.tally_abstain:
+            tally_parts.append(f"{vote.tally_abstain} avstår")
+        if not tally_parts and vote.has_details:
+            for stance in _STANCE_ORDER[:3]:
+                named = sum(1 for record in vote.records.all() if record.stance == stance)
+                if named:
+                    tally_parts.append(f"{named} {dict(Vote.Stance.choices)[stance].lower()}")
+
+        shaped.append(
+            {
+                "vote": vote,
+                "label": vote.proposition or (vote.chunk.title if vote.chunk else "Röstning"),
+                "tally_text": " · ".join(tally_parts),
+                "parties": parties,
+                "stance_groups": [
+                    {
+                        "label": _STANCE_LABELS.get(stance, stance),
+                        "records": members[stance],
+                    }
+                    for stance in _STANCE_ORDER
+                    if stance in members
+                ],
+                "mismatch": vote.records_match_tally is False,
+            }
+        )
+    return shaped
 
 
 def _int_param(request, name):
@@ -194,6 +256,14 @@ def document_detail_view(request, pk):
     associations = document.associations.select_related(
         "meeting", "meeting__body", "meeting__body__authority", "agenda_item"
     )
+    votes = []
+    if current is not None and current.processing_status == DocumentVersion.Status.PROCESSED:
+        votes = _shape_votes(
+            Vote.objects.filter(document_version=current)
+            .prefetch_related("records")
+            .select_related("chunk")
+            .order_by("sequence")
+        )
     return render(
         request,
         "website/document_detail.html",
@@ -203,6 +273,7 @@ def document_detail_view(request, pk):
             "current_version": current,
             "chunks": chunks,
             "associations": associations,
+            "votes": votes,
             "doc_type_label": _TYPE_LABELS.get(document.doc_type, document.doc_type),
         },
     )

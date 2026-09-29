@@ -13,6 +13,51 @@
 </section>
 {% endif %}
 
+{% if votes %}
+<section class="votes">
+    <h2>Röstningar</h2>
+    {% for item in votes %}
+    <details class="vote">
+        <summary>
+            <span class="vote-number">#{{ forloop.counter }}</span>
+            <span class="vote-tally">{{ item.tally_text|default:"röstlängd saknas" }}</span>
+            <span class="vote-label">{{ item.label|truncatechars:100 }}</span>
+        </summary>
+        <div class="vote-body">
+            {% if item.vote.proposition %}<p class="vote-proposition">{{ item.vote.proposition }}</p>{% endif %}
+            {% if item.vote.outcome_text %}<p class="vote-outcome">{{ item.vote.outcome_text }}</p>{% endif %}
+            {% if item.parties %}
+            <table class="vote-parties">
+                <tr><th>Parti</th><th>Ja</th><th>Nej</th><th>Avstår</th><th>Frånvarande</th></tr>
+                {% for p in item.parties %}
+                <tr>
+                    <td><span class="party {{ p.css }}">{{ p.code }}</span> {{ p.label }}</td>
+                    <td>{{ p.stances.ja|default:"" }}</td>
+                    <td>{{ p.stances.nej|default:"" }}</td>
+                    <td>{{ p.stances.avstar|default:"" }}</td>
+                    <td>{{ p.stances.franvarande|default:"" }}</td>
+                </tr>
+                {% endfor %}
+            </table>
+            {% for group in item.stance_groups %}
+            <p class="vote-members">
+                <strong>{{ group.label }}</strong>
+                {% for r in group.records %}{{ r.member_name }} ({{ r.party_code }}){% if not forloop.last %}, {% endif %}{% endfor %}
+            </p>
+            {% endfor %}
+            {% endif %}
+            {% if item.mismatch %}<p class="notice">OBS: namnlistan stämmer inte med angivet röstantal.</p>{% endif %}
+            {% if item.vote.chunk_id %}
+            <p class="vote-source">
+                <a href="#chunk-{{ item.vote.chunk_id }}">Visa i text (s. {{ item.vote.chunk.page_start }})</a>
+            </p>
+            {% endif %}
+        </div>
+    </details>
+    {% endfor %}
+</section>
+{% endif %}
+
 <h2>Kopplingar</h2>
 <ul class="associations">
     {% for a in associations %}
@@ -48,7 +93,7 @@
 <h2>Text (aktuell version)</h2>
 {% if chunks %}
 {% for c in chunks %}
-<details class="chunk">
+<details class="chunk" id="chunk-{{ c.pk }}">
     <summary>s. {{ c.page_start }}{% if c.page_end != c.page_start %}–{{ c.page_end }}{% endif %} — {{ c.title }}</summary>
     <pre>{{ c.text }}</pre>
 </details>

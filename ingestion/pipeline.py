@@ -20,6 +20,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from core.models import (
@@ -34,7 +35,7 @@ from core.models import (
     Meeting,
 )
 
-from . import chunking, extract
+from . import chunking, extract, votes
 from .adapters.base import SourceAdapter
 from .adapters.uppsala import get_adapter_class
 from .fetch import Fetcher, FetchError, looks_like_pdf
@@ -311,6 +312,39 @@ def _label_for(snapshot, url: str) -> str | None:
     return None
 
 
+def _cached_extraction(version: DocumentVersion) -> extract.ExtractionResult | None:
+    """Stage A cache: reuse the sidecar when its extractor version is current.
+
+    Reprocessing (chunker or later-stage bumps) must never re-pay the PDF/OCR
+    cost; a sidecar produced by a different extractor version is stale and the
+    expensive path runs again.
+    """
+    if not version.sha256:
+        return None
+    path = settings.DERIVED_DIR / f"{version.sha256}.extraction.json"
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if data.get("extractor_version") != extract.EXTRACTOR_VERSION:
+        return None
+    pages = [
+        extract.PageText(entry["number"], entry["method"], entry["text"])
+        for entry in data.get("pages", [])
+        if isinstance(entry, dict)
+    ]
+    if not pages:
+        return None
+    return extract.ExtractionResult(
+        pages=pages,
+        ocr_used=bool(data.get("ocr_used")),
+        ocr_page_numbers=list(data.get("ocr_page_numbers", [])),
+        ocr_error=data.get("ocr_error", ""),
+    )
+
+
 def process_versions(
     *,
     run: IngestionRun,
@@ -339,7 +373,11 @@ def process_versions(
             _mark_failed(version, f"stored file missing: {version.stored_path}", run)
             continue
         try:
-            result = extract.extract_pdf(source_path, settings.DERIVED_DIR, version.sha256 or "unknown")
+            result = _cached_extraction(version)
+            if result is None:
+                result = extract.extract_pdf(source_path, settings.DERIVED_DIR, version.sha256 or "unknown")
+            else:
+                log.info("Version %s: reusing cached extraction %s", version.pk, version.sha256[:12])
             drafts = chunking.build_chunks(result.pages)
             if drafts:
                 _store_chunks(version, drafts, run, ocr_used=result.ocr_used)
@@ -350,6 +388,57 @@ def process_versions(
         except Exception as exc:  # noqa: BLE001 - recorded per version, run continues
             _mark_failed(version, f"{type(exc).__name__}: {exc}", run)
             log.error("Processing failed for version %s: %s", version.pk, exc)
+
+
+def extract_votes(
+    *,
+    run: IngestionRun,
+    version_ids: list[int] | None = None,
+    document_id: int | None = None,
+    limit: int | None = None,
+    force: bool = False,
+) -> dict:
+    """Stage C: parse recorded votes from chunk text for processed versions.
+
+    Versions stamped with the current vote-parser version are skipped unless
+    force=True. One version's failure is recorded and does not abort the run.
+    """
+    queryset = DocumentVersion.objects.filter(processing_status=DocumentVersion.Status.PROCESSED)
+    if not force:
+        queryset = queryset.filter(
+            Q(vote_parser_version__isnull=True) | ~Q(vote_parser_version=votes.VOTE_PARSER_VERSION)
+        )
+    if version_ids:
+        queryset = queryset.filter(id__in=version_ids)
+    if document_id:
+        queryset = queryset.filter(document_id=document_id)
+    queryset = queryset.order_by("id")
+    if limit:
+        queryset = queryset[:limit]
+
+    stats = {"versions": 0, "votes": 0, "records": 0, "failures": 0}
+    for version in queryset:
+        chunks = [
+            {"pk": chunk.pk, "agenda_item": chunk.agenda_item_id, "text": chunk.text}
+            for chunk in version.chunks.order_by("sequence")
+        ]
+        try:
+            parsed = votes.parse_version(chunks)
+        except Exception as exc:  # noqa: BLE001 - recorded per version, run continues
+            log.error("Vote extraction failed for version %s: %s", version.pk, exc)
+            run.failures += 1
+            stats["failures"] += 1
+            continue
+        with transaction.atomic():
+            created_votes, created_records = votes.store(version, chunks, parsed)
+            version.vote_parser_version = votes.VOTE_PARSER_VERSION
+            version.save(update_fields=["vote_parser_version"])
+        stats["versions"] += 1
+        stats["votes"] += created_votes
+        stats["records"] += created_records
+    if stats["failures"]:
+        run.save(update_fields=["failures"])
+    return stats
 
 
 def _primary_items_for(document: Document) -> list[AgendaItem]:
@@ -445,8 +534,9 @@ def rebuild_search_index() -> dict:
     return {"fts_rows": fts_rows, "chunk_rows": chunk_rows}
 
 
-def backup_database(dest_dir: Path, include_originals: bool = False) -> dict:
-    """SQLite online backup (WAL-safe) plus an optional copy of original documents."""
+def backup_database(dest_dir: Path, include_originals: bool = False, include_derived: bool = True) -> dict:
+    """SQLite online backup (WAL-safe) plus copies of the original documents and
+    the derived extraction cache (sidecars + OCR PDFs: expensive to regenerate)."""
     import sqlite3
 
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -459,9 +549,13 @@ def backup_database(dest_dir: Path, include_originals: bool = False) -> dict:
     finally:
         target.close()
         source.close()
-    result = {"database": str(db_dest), "originals": None}
+    result = {"database": str(db_dest), "originals": None, "derived": None}
     if include_originals:
         originals_dest = dest_dir / f"originals-{stamp}"
         shutil.copytree(settings.ORIGINALS_DIR, originals_dest, dirs_exist_ok=True)
         result["originals"] = str(originals_dest)
+    if include_derived:
+        derived_dest = dest_dir / f"derived-{stamp}"
+        shutil.copytree(settings.DERIVED_DIR, derived_dest, dirs_exist_ok=True)
+        result["derived"] = str(derived_dest)
     return result

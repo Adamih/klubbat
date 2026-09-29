@@ -161,6 +161,8 @@ class DocumentVersion(models.Model):
     ocr_used = models.BooleanField(default=False)
     extracted_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    # Latest vote-parser stage (stage C) that produced this version's Vote rows.
+    vote_parser_version = models.CharField(max_length=100, null=True, blank=True)
 
     class Meta:
         constraints = [
@@ -201,6 +203,60 @@ class Chunk(models.Model):
 
     def __str__(self) -> str:
         return f"chunk {self.pk} seq {self.sequence} p{self.page_start}-{self.page_end}"
+
+
+class Vote(models.Model):
+    """One recorded vote (stage C output), parsed from a version's chunk text.
+
+    Only the latest parse is kept: re-extraction deletes and recreates the rows.
+    The chunk/agenda-item references carry the provenance (page, agenda item).
+    """
+
+    class Stance(models.TextChoices):
+        YES = "ja", "Ja"
+        NO = "nej", "Nej"
+        ABSTAIN = "avstar", "Avstår"
+        ABSENT = "franvarande", "Frånvarande"
+
+    document_version = models.ForeignKey(DocumentVersion, on_delete=models.CASCADE, related_name="votes")
+    chunk = models.ForeignKey(Chunk, null=True, blank=True, on_delete=models.SET_NULL, related_name="votes")
+    agenda_item = models.ForeignKey(AgendaItem, null=True, blank=True, on_delete=models.SET_NULL, related_name="votes")
+    sequence = models.IntegerField()  # order of the vote within the version
+    proposition = models.TextField(blank=True)  # "Rösta Ja för ..., rösta Nej för ..."
+    outcome_text = models.TextField(blank=True)  # "Med 39 ja-röster mot 40 nej-röster ..." sentence
+    tally_yes = models.IntegerField(null=True, blank=True)
+    tally_no = models.IntegerField(null=True, blank=True)
+    tally_abstain = models.IntegerField(null=True, blank=True)
+    has_details = models.BooleanField(default=False)  # named voter lists were present
+    # None when there is no stated tally to compare the named voters against.
+    records_match_tally = models.BooleanField(null=True, blank=True)
+    parser_version = models.CharField(max_length=100)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["document_version", "sequence"], name="uniq_vote_version_seq"),
+        ]
+        ordering = ["document_version_id", "sequence"]
+
+    def __str__(self) -> str:
+        return f"vote v{self.document_version_id} #{self.sequence}"
+
+
+class VoteRecord(models.Model):
+    """One named member's stance in a Vote, as printed in the protocol."""
+
+    vote = models.ForeignKey(Vote, on_delete=models.CASCADE, related_name="records")
+    position = models.IntegerField()
+    member_name = models.CharField(max_length=200)
+    party_code = models.CharField(max_length=12)
+    stance = models.CharField(max_length=12, choices=Vote.Stance.choices)
+
+    class Meta:
+        ordering = ["vote_id", "position"]
+
+    def __str__(self) -> str:
+        return f"{self.member_name} ({self.party_code}) {self.stance}"
 
 
 class IngestionRun(models.Model):

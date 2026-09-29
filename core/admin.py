@@ -12,6 +12,8 @@ from .models import (
     DocumentVersion,
     IngestionRun,
     Meeting,
+    Vote,
+    VoteRecord,
 )
 
 
@@ -120,6 +122,28 @@ class ChunkAdmin(admin.ModelAdmin):
 class DocumentAssociationAdmin(admin.ModelAdmin):
     list_display = ("document", "meeting", "agenda_item", "source_context")
     raw_id_fields = ("document", "meeting", "agenda_item")
+
+
+class VoteRecordInline(admin.TabularInline):
+    model = VoteRecord
+    extra = 0
+    fields = ("position", "member_name", "party_code", "stance")
+
+
+@admin.register(Vote)
+class VoteAdmin(admin.ModelAdmin):
+    list_display = (
+        "document_version",
+        "sequence",
+        "has_details",
+        "tally_yes",
+        "tally_no",
+        "records_match_tally",
+        "parser_version",
+    )
+    list_filter = ("has_details", "records_match_tally")
+    raw_id_fields = ("document_version", "chunk", "agenda_item")
+    inlines = [VoteRecordInline]
 
 
 @admin.register(IngestionRun)

@@ -29,6 +29,7 @@ class Command(BaseCommand):
             try:
                 pipeline.run_discovery(adapter_cls, start, end, download=True, refresh=True, run=run)
                 pipeline.process_versions(run=run)
+                pipeline.extract_votes(run=run)
             except Exception as exc:
                 pipeline.finish_run(run, ok=False, error_summary=f"{type(exc).__name__}: {exc}")
                 raise CommandError(f"Ingestion failed: {exc}")

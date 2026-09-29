@@ -28,10 +28,11 @@ Skapa en adminanvändare för /admin/: `uv run python manage.py createsuperuser`
 | `discover_meetings --year YYYY` (eller `--start/--end`) | Upptäck möten + dokument i ett intervall, ladda ner nya PDF:er. Idempotent. |
 | `backfill --year YYYY` | Komplett år: discovery + nedladdning + extraktion. `--limit-meetings N` för provkörning. |
 | `ingest_recent --days 60` | Återbesök senaste periodens möten, hämta om dokument (senutgåvor/korrigeringar), extrahera. |
-| `process_versions --status pending` | Extrahera + chunka sparade versioner. `--document-id`/`--version-id` för riktnade körningar. |
+| `process_versions --status pending` | Extrahera + chunka sparade versioner. `--document-id`/`--version-id` för riktnade körningar. Återanvänder cachead extraktionstext ur `data/derived/` när extractor-versionen stämmer (OCR-kostnaden betalas bara en gång). |
+| `extract_votes [--force]` | Parsa röstningar (parti- och namngrupperade) ur extraherad text. Idempotent; hoppar över versioner med aktuell parser-version. |
 | `retry_failed` | Ladda om misslyckade nedladdningar, köa om misslyckad extraktion. |
 | `rebuild_search_index` | Bygg om FTS5-index från sparade chunks. |
-| `backup_database [--originals]` | SQLite-onlinebackup (WAL-säkert) till `backups/`. |
+| `backup_database [--originals] [--no-derived]` | SQLite-onlinebackup (WAL-säkert) till `backups/`, inklusive `data/derived/` (extraktionscachen: sidecars + OCR-PDF:er). |
 
 Alla ingestionkommandon tar ett lås (`data/ingestion.lock`); överlappande
 körningar avvisas, och en låst process med död PID bryts automatiskt.
@@ -54,7 +55,10 @@ Backup: `uv run python manage.py backup_database` skriver en konsistent kopia
 av databasen (SQLite backup-API, hanterar WAL korrekt) till
 `backups/db-<tidsstämpel>.sqlite3`. `--originals` kopierar även
 `data/originals/` (de bevarade original-PDF:erna, innehållsadresserade med
-SHA-256 — kopior är per definition identiska).
+SHA-256 — kopior är per definition identiska). Extraktionscachen
+`data/derived/` (sidecar-JSON med per-sidig text samt OCR-ade PDF:er, som är
+dyra att återskapa) kopieras som standard till `backups/derived-<tidsstämpel>/`;
+`--no-derived` hoppas över den.
 
 Återställning:
 
