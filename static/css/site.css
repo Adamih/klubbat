@@ -194,12 +194,16 @@ ul.vote-list { list-style: none; padding-left: 0; }
 .stance-strip { display: flex; flex-wrap: wrap; gap: 0.35rem 1.25rem; margin: 0.45rem 0; font-size: 0.9rem; }
 .stance-strip strong { font-weight: 600; color: #555; margin-right: 0.3rem; }
 .stance-entry { margin-right: 0.75rem; white-space: nowrap; }
-.vote-chip {
+/* a.vote-chip needs to out-specify ul.documents a, which would otherwise
+   paint the chip's white text accent-blue on an accent-blue background. */
+a.vote-chip,
+ul.documents a.vote-chip {
     display: inline-block; margin-left: 0.4rem; padding: 0 0.5rem;
     font-size: 0.78rem; font-weight: 600; text-decoration: none;
     color: #fff; background: var(--accent); border-radius: 999px;
 }
-.vote-chip:hover { text-decoration: none; background: #164a6e; }
+a.vote-chip:hover,
+ul.documents a.vote-chip:hover { text-decoration: none; background: #164a6e; }
 .filters label.check { flex-direction: row; align-items: center; gap: 0.4rem; justify-content: flex-end; }
 
 ul.member-votes { list-style: none; padding-left: 0; }
