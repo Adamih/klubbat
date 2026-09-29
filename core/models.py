@@ -30,6 +30,8 @@ class Body(models.Model):
     slug = models.SlugField(max_length=120)
     name = models.CharField(max_length=200)
     source_url = models.URLField(blank=True)
+    # Number of elected members; used as a sanity reference for vote tallies.
+    seat_count = models.IntegerField(null=True, blank=True)
 
     class Meta:
         constraints = [
@@ -218,12 +220,29 @@ class Vote(models.Model):
         ABSTAIN = "avstar", "Avstår"
         ABSENT = "franvarande", "Frånvarande"
 
+    class VoteType(models.TextChoices):
+        BIFALL = "bifall", "Bifall"
+        AVSLAG = "avslag", "Avslag"
+        AVVISNING = "avvisning", "Avvisning"
+        ATEREMITTERA = "ateremittera", "Återremittering"
+        BORDLAGGNING = "bordlaggning", "Bordläggning"
+        VAL = "val", "Val/förordnande"
+        PROCEDUR = "procedur", "Procedurell röstning"
+        ANNAT = "annat", "Annat"
+
     document_version = models.ForeignKey(DocumentVersion, on_delete=models.CASCADE, related_name="votes")
     chunk = models.ForeignKey(Chunk, null=True, blank=True, on_delete=models.SET_NULL, related_name="votes")
     agenda_item = models.ForeignKey(AgendaItem, null=True, blank=True, on_delete=models.SET_NULL, related_name="votes")
     sequence = models.IntegerField()  # order of the vote within the version
     proposition = models.TextField(blank=True)  # "Rösta Ja för ..., rösta Nej för ..."
     outcome_text = models.TextField(blank=True)  # "Med 39 ja-röster mot 40 nej-röster ..." sentence
+    decision_text = models.TextField(blank=True)  # decided clause, e.g. "bifalla kommunstyrelsens förslag"
+    vote_type = models.CharField(
+        max_length=20, choices=VoteType.choices, default=VoteType.ANNAT
+    )
+    # Agenda item as printed in the protocol ("Svar på motion om att utreda
+    # ..."), used as the vote's subject when no AgendaItem row matches.
+    agenda_title = models.CharField(max_length=300, blank=True)
     tally_yes = models.IntegerField(null=True, blank=True)
     tally_no = models.IntegerField(null=True, blank=True)
     tally_abstain = models.IntegerField(null=True, blank=True)
@@ -241,6 +260,31 @@ class Vote(models.Model):
 
     def __str__(self) -> str:
         return f"vote v{self.document_version_id} #{self.sequence}"
+
+
+class VoteReservation(models.Model):
+    """A reservation (reservation) or special opinion (särskilt yttrande)
+    printed together with a vote's decision, with the parties or member behind it."""
+
+    class Kind(models.TextChoices):
+        RESERVATION = "reservation", "Reservation"
+        YTTRANDE = "yttrande", "Särskilt yttrande"
+
+    vote = models.ForeignKey(Vote, on_delete=models.CASCADE, related_name="reservations")
+    position = models.IntegerField()
+    kind = models.CharField(max_length=12, choices=Kind.choices)
+    # Comma-separated party codes as printed ("M, KD, SD"); empty when the
+    # entry belongs to a single named member.
+    party_codes = models.CharField(max_length=100, blank=True)
+    member_name = models.CharField(max_length=200, blank=True)
+    text = models.TextField()
+
+    class Meta:
+        ordering = ["vote_id", "position"]
+
+    def __str__(self) -> str:
+        who = self.member_name or self.party_codes or "?"
+        return f"{self.get_kind_display()} ({who})"
 
 
 class VoteRecord(models.Model):

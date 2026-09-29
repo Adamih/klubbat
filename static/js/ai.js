@@ -4,6 +4,7 @@
 
 const STORAGE_KEY = "pi-ai-settings";
 const MAX_CHARS = 100000;
+const MAX_VOTE_CHUNK_CHARS = 12000;
 
 function loadSettings() {
     try {
@@ -219,11 +220,116 @@ function initSummaryPage(section) {
     });
 }
 
+function collectVoteContext(card, box) {
+    const parts = [];
+    const votesSection = card ? card.closest(".votes") : null;
+    parts.push("Dokument: " + (votesSection?.dataset.docTitle || document.title));
+    const selectors = [
+        ".vote-agenda",
+        ".vote-proposition",
+        ".vote-decision",
+        ".vote-outcome",
+        ".party-positions",
+        ".vote-reservations",
+    ];
+    if (card) {
+        for (const selector of selectors) {
+            const el = card.querySelector(selector);
+            if (el) parts.push(el.textContent.trim().replace(/\s+/g, " "));
+        }
+        for (const el of card.querySelectorAll(".vote-members")) {
+            parts.push(el.textContent.trim().replace(/\s+/g, " "));
+        }
+    }
+    const chunkId = box.dataset.chunkId;
+    if (chunkId) {
+        const pre = document.getElementById("chunk-" + chunkId)?.querySelector("pre");
+        if (pre) {
+            let text = pre.textContent.trim().replace(/\s+/g, " ");
+            if (text.length > MAX_VOTE_CHUNK_CHARS) {
+                text = text.slice(0, MAX_VOTE_CHUNK_CHARS) + " …";
+            }
+            parts.push("Protokolltext:\n" + text);
+        }
+    }
+    return parts.join("\n\n");
+}
+
+function initVoteExplainers() {
+    const boxes = document.querySelectorAll(".ai-vote");
+    if (!boxes.length) return;
+
+    for (const box of boxes) {
+        const button = box.querySelector(".ai-vote-button");
+        const status = box.querySelector(".ai-status");
+        const output = box.querySelector(".ai-output");
+        let controller = null;
+
+        const show = (text, kind) => showStatus(status, text, kind);
+
+        button.addEventListener("click", async () => {
+            if (controller) {
+                controller.abort();
+                return;
+            }
+            const settings = loadSettings();
+            if (!isComplete(settings)) {
+                show(
+                    "Ingen modell är konfigurerad. Lägg in bas-URL, API-nyckel och modell under Inställningar i menyn.",
+                    "error"
+                );
+                return;
+            }
+
+            const context = collectVoteContext(box.closest(".vote"), box);
+            if (context.trim().length < 20) {
+                show("Det finns inget underlag att förklara.", "error");
+                return;
+            }
+
+            const messages = [
+                {
+                    role: "system",
+                    content:
+                        "Du förklarar omröstningar i svenska kommunfullmäktige för allmänheten. " +
+                        "Skriv kort på svenska (5–8 meningar): vad ärendet gäller, vad ja- respektive " +
+                        "nej-röst innebar, vilket beslut som blev resultatet och hur partierna " +
+                        "positionerade sig. Använd endast information från den angivna texten — hitta " +
+                        "inte på något. Om underlaget är ofullständigt, säg det.",
+                },
+                { role: "user", content: context },
+            ];
+
+            controller = new AbortController();
+            button.textContent = "Avbryt";
+            output.hidden = true;
+            output.textContent = "";
+            show("Förklarar med " + settings.model + " …", "busy");
+            try {
+                const answer = await chatCompletion(settings, messages, 1200, controller.signal);
+                show("", "");
+                output.textContent = answer;
+                output.hidden = false;
+            } catch (err) {
+                if (err.name === "AbortError") {
+                    show("Förklaringen avbröts.", "");
+                } else {
+                    show("Kunde inte förklara röstningen: " + err.message, "error");
+                }
+            } finally {
+                controller = null;
+                button.textContent = "Förklara röstningen";
+            }
+        });
+    }
+}
+
 function init() {
     const settingsForm = document.querySelector("#ai-settings-form");
     if (settingsForm) initSettingsPage(settingsForm);
     const summaryButton = document.querySelector("#ai-summary-button");
     if (summaryButton) initSummaryPage(summaryButton.closest(".ai-summary"));
+    if (document.querySelector(".ai-vote")) initVoteExplainers();
 }
 
 if (document.readyState === "loading") {

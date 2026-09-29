@@ -154,6 +154,94 @@ def test_tail_tally_becomes_standalone_vote():
     assert parsed[1].tally_yes == 1
 
 
+def test_vote_type_classification():
+    assert votes._classify_vote("", "Med 2 ja-röster mot 1 nej-röster beslutades avslag.") == "avslag"
+    # The outcome sentence decides, even when the proposition mentions several types.
+    assert (
+        votes._classify_vote(
+            "Rösta JA för bifall, rösta NEJ för att återremittera ärendet.",
+            "Med 3 ja-röster mot 2 nej-röster finner ordföranden att beslutat att återremittera ärendet.",
+        )
+        == "ateremittera"
+    )
+    assert votes._classify_vote("", "Kommunfullmäktige valde Anna för ett år framåt.") == "val"
+    assert votes._classify_vote("", "Något helt annat.") == "annat"
+
+
+def test_decision_text_extraction():
+    assert (
+        votes._decision_text(
+            "Med 44 ja-röster mot 36 nej-röster finner ordföranden att kommunfullmäktige "
+            "beslutar att bifalla kommunstyrelsens förslag."
+        )
+        == "bifalla kommunstyrelsens förslag"
+    )
+    assert votes._decision_text("Med 39 ja-röster mot 40 nej-röster beslutades avslag.") == "avslag"
+    assert votes._decision_text("Ingen beslutsmening här.") == ""
+
+
+def test_reservations_and_yttranden_parsed():
+    text = (
+        "Omröstning begärs och genomförs.\n"
+        "Rösta Ja för bifall till kommunstyrelsens förslag, rösta Nej för bifall till motionen.\n"
+        "Med 6 ja-röster mot 2 nej-röster beslutades bifall.\n"
+        "Reservationer Närvarande ledamöter (M), (KD) och (SD) reserverar sig mot beslutet.\n"
+        "Närvarande ledamöter (C) reserverar sig mot beslutet med följande motivering: "
+        "Centerpartiet anser att frågan borde ha utretts mer.\n"
+        "Särskilda yttranden Lina Hamberg (UP) inkommer med särskilt yttrande: "
+        "Utvecklingspartiet anser att projektet ska skrotas.\n"
+        f"Omröstningsdetaljer\n{JA_LIST}\n{NEJ_LIST}"
+    )
+    parsed = votes.parse_version([_chunk(text)])
+    assert len(parsed) == 1
+    reservations = parsed[0].reservations
+    assert [(r.kind, r.party_codes) for r in reservations] == [
+        ("reservation", ["M", "KD", "SD"]),
+        ("reservation", ["C"]),
+        ("yttrande", ["UP"]),
+    ]
+    assert reservations[2].member_name == "Lina Hamberg"
+    # Heading words must not leak into entry text or names.
+    assert not reservations[0].text.startswith("Reservationer")
+    assert reservations[0].text.endswith("reserverar sig mot beslutet.")
+    assert reservations[1].text.startswith("Närvarande ledamöter (C)")
+    assert reservations[2].text.startswith("Lina Hamberg (UP) inkommer")
+
+
+def test_agenda_item_resolved_from_printed_heading(source_tree, stored_version):
+    _, _, meeting = source_tree
+    item = AgendaItem.objects.create(
+        meeting=meeting,
+        agenda_number=18,
+        title="Svar på motion om att utreda en breddning av Kungsängsbron från Therez Almerfors (M)",
+    )
+    document, version = _processed_version(stored_version)
+    text = (
+        "§ 18 Svar på motion om att utreda en breddning av Kungsängsbron från Therez Almerfors (M) "
+        "KSN-2024-03238 Beslut Kommunfullmäktige beslutar att bifalla kommunstyrelsens förslag.\n"
+        "Omröstning begärs och genomförs.\n"
+        "Med 6 ja-röster mot 2 nej-röster finner ordföranden att kommunfullmäktige beslutar att "
+        "bifalla kommunstyrelsens förslag.\n"
+        f"Omröstningsdetaljer\n{JA_LIST}\n{NEJ_LIST}"
+    )
+    Chunk.objects.create(
+        document_version=version,
+        sequence=999,
+        title=document.title,
+        text=text,
+        page_start=39,
+        page_end=40,
+        processing_version="test",
+    )
+    pipeline.extract_votes(run=pipeline.begin_run("test"), version_ids=[version.id])
+
+    vote = Vote.objects.get()
+    assert vote.agenda_item_id == item.pk
+    assert vote.vote_type == "bifall"
+    assert "Kungsängsbron" in vote.agenda_title
+    assert vote.decision_text == "bifalla kommunstyrelsens förslag"
+
+
 def _processed_version(stored_version):
     document, version = stored_version
     version.processing_status = DocumentVersion.Status.PROCESSED
@@ -209,10 +297,13 @@ def test_document_detail_shows_votes_section(client, stored_version):
     assert res.status_code == 200
     content = res.content.decode()
     assert "Röstningar" in content
-    assert "Socialdemokraterna" in content
-    assert "Erik Pelling (S)" in content
+    assert 'title="Socialdemokraterna"' in content  # party chip with full name
+    assert 'class="party-position"' in content  # party-line chips replace the counts table
+    assert "Erik Pelling" in content
+    assert reverse("website:member", args=["erik-pelling"]) in content  # name links to member page
     assert f'id="chunk-{chunk.pk}"' in content
     assert f'href="#chunk-{chunk.pk}"' in content
+    assert "ai-vote-button" in content  # per-vote AI explainer
 
 
 def test_document_detail_without_votes_hides_section(client, stored_version):
@@ -316,3 +407,53 @@ def test_search_view_vote_filter_checkbox(client, stored_version):
     pipeline.extract_votes(run=pipeline.begin_run("test"), version_ids=[version.id])
     res = client.get(reverse("website:search"), {"q": "Spårvägen", "rostning": "1"})
     assert document.title in res.content.decode()
+
+
+def test_votes_page_filters_on_vote_type(client, stored_version):
+    document, version = _processed_version(stored_version)
+    Chunk.objects.create(
+        document_version=version,
+        sequence=999,
+        title=document.title,
+        text=f"Med 6 ja-röster mot 2 nej-röster beslutades bifall.\nOmröstningsdetaljer\n{JA_LIST}\n{NEJ_LIST}",
+        page_start=23,
+        page_end=23,
+        processing_version="test",
+    )
+    pipeline.extract_votes(run=pipeline.begin_run("test"), version_ids=[version.id])
+
+    res = client.get(reverse("website:votes"), {"typ": "bifall"})
+    content = res.content.decode()
+    assert document.title in content
+    assert "vote-type-bifall" in content
+    res = client.get(reverse("website:votes"), {"typ": "avslag"})
+    assert "Inga röstningar matchar filtret" in res.content.decode()
+
+
+def test_member_page_shows_voting_history(client, stored_version):
+    document, version = _processed_version(stored_version)
+    _seed_vote_chunks(document, version)
+    pipeline.extract_votes(run=pipeline.begin_run("test"), version_ids=[version.id])
+
+    res = client.get(reverse("website:member", args=["erik-pelling"]))
+    assert res.status_code == 200
+    content = res.content.decode()
+    assert "Erik Pelling" in content
+    assert "1 ja" in content
+    assert reverse("website:document-detail", args=[document.pk]) in content
+    assert "stance-badge" in content
+
+    res = client.get(reverse("website:member", args=["finns-inte"]))
+    assert res.status_code == 404
+
+
+def test_seat_count_sanity_warning(client, stored_version, source_tree):
+    _, body, _ = source_tree
+    body.seat_count = 3
+    body.save(update_fields=["seat_count"])
+    document, version = _processed_version(stored_version)
+    _seed_vote_chunks(document, version)  # 8 named voters > 3 seats
+    pipeline.extract_votes(run=pipeline.begin_run("test"), version_ids=[version.id])
+
+    res = client.get(reverse("website:document-detail", args=[document.pk]))
+    assert "överstiger antalet ledamöter" in res.content.decode()

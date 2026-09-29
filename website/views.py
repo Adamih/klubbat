@@ -32,8 +32,38 @@ _STANCE_ORDER = ("ja", "nej", "avstar", "franvarande")
 _STANCE_LABELS = dict(Vote.Stance.choices)
 
 
-def _shape_votes(votes):
-    """Shape Vote rows for the template: party stance matrix + member lists."""
+from django.conf import settings
+from django.db.models import Count, Exists, Max, Min, OuterRef
+from django.http import FileResponse, Http404
+from django.shortcuts import get_object_or_404, render
+from django.utils.text import slugify
+
+from core.models import (
+    Authority,
+    Body,
+    Chunk,
+    Document,
+    DocumentAssociation,
+    DocumentVersion,
+    IngestionRun,
+    Meeting,
+    Vote,
+    VoteRecord,
+)
+from core.parties import party_css_class, party_label
+from search import service
+from search.query import build_match_query
+
+PAGE_SIZE = 20
+_TYPE_LABELS = dict(Document.DocType.choices)
+_STANCE_ORDER = ("ja", "nej", "avstar", "franvarande")
+_STANCE_LABELS = dict(Vote.Stance.choices)
+_STANCE_PART_LABELS = {"ja": "ja", "nej": "nej", "avstar": "avstår", "franvarande": "frånvarande"}
+
+
+def _shape_votes(votes, seat_count=None):
+    """Shape Vote rows for the template: subject, outcome summary, party
+    positions, member lists, reservations, and data-quality warnings."""
     shaped = []
     for vote in votes:
         counts: dict[str, dict[str, int]] = {}
@@ -41,17 +71,29 @@ def _shape_votes(votes):
         for record in vote.records.all():
             per_party = counts.setdefault(record.party_code, {})
             per_party[record.stance] = per_party.get(record.stance, 0) + 1
-            members.setdefault(record.stance, []).append(record)
+            members.setdefault(record.stance, []).append(
+                {
+                    "name": record.member_name,
+                    "party": record.party_code,
+                    "slug": slugify(record.member_name),
+                }
+            )
 
         parties = []
         for code in counts:
             stances = {s: counts[code][s] for s in _STANCE_ORDER if counts[code].get(s)}
+            parts = [
+                f"{counts[code][s]} {_STANCE_PART_LABELS[s]}"
+                for s in _STANCE_ORDER
+                if counts[code].get(s)
+            ]
             parties.append(
                 {
                     "code": code,
                     "label": party_label(code),
                     "css": party_css_class(code),
                     "stances": stances,
+                    "parts": parts,
                     "total": sum(stances.values()),
                 }
             )
@@ -82,13 +124,61 @@ def _shape_votes(votes):
                 if named:
                     tally_parts.append(f"{named} {dict(Vote.Stance.choices)[stance].lower()}")
 
+        agenda_title = vote.agenda_item.title if vote.agenda_item else vote.agenda_title
+        agenda_number = vote.agenda_item.agenda_number if vote.agenda_item else None
+        margin = (
+            abs(vote.tally_yes - vote.tally_no)
+            if vote.tally_yes is not None and vote.tally_no is not None
+            else None
+        )
+
+        reservations = [
+            {
+                "kind_label": reservation.get_kind_display(),
+                "party_codes": [
+                    code.strip() for code in reservation.party_codes.split(",") if code.strip()
+                ],
+                "party_chips": [
+                    {"code": code.strip(), "css": party_css_class(code.strip())}
+                    for code in reservation.party_codes.split(",")
+                    if code.strip()
+                ],
+                "member_name": reservation.member_name,
+                "text": reservation.text,
+            }
+            for reservation in vote.reservations.all()
+        ]
+
+        named_total = sum(len(records) for records in members.values())
+        sanity = []
+        if vote.records_match_tally is False:
+            sanity.append("Namnlistan stämmer inte med angivet röstantal.")
+        if seat_count:
+            cast = sum(n for n in (vote.tally_yes, vote.tally_no, vote.tally_abstain) if n)
+            if cast > seat_count:
+                sanity.append(f"Rösterna ({cast}) överstiger antalet ledamöter ({seat_count}).")
+            if named_total > seat_count:
+                sanity.append(
+                    f"Namnlistan ({named_total} röster) överstiger antalet ledamöter ({seat_count})."
+                )
+
         shaped.append(
             {
                 "vote": vote,
-                "label": vote.proposition or (vote.chunk.title if vote.chunk else "Röstning"),
+                "agenda": {"number": agenda_number, "title": agenda_title} if agenda_title else None,
+                "subject": agenda_title,
+                "type": (
+                    {"code": vote.vote_type, "label": vote.get_vote_type_display()}
+                    if vote.vote_type != Vote.VoteType.ANNAT
+                    else None
+                ),
+                "decision": vote.decision_text,
+                "margin": margin,
+                "label": agenda_title or vote.proposition or (vote.chunk.title if vote.chunk else "Röstning"),
                 "tally_text": " · ".join(tally_parts),
                 "parties": parties,
                 "strip": strip,
+                "reservations": reservations,
                 "stance_groups": [
                     {
                         "label": _STANCE_LABELS.get(stance, stance),
@@ -97,6 +187,7 @@ def _shape_votes(votes):
                     for stance in _STANCE_ORDER
                     if stance in members
                 ],
+                "sanity": sanity,
                 "mismatch": vote.records_match_tally is False,
             }
         )
@@ -303,11 +394,12 @@ def votes_view(request):
     )
     base_votes = Vote.objects.filter(document_version_id__in=current_ids)
     party = request.GET.get("parti", "").strip().upper() or None
+    vote_type = request.GET.get("typ", "").strip() or None
     year = _int_param(request, "ar")
 
     votes = (
         base_votes.select_related("document_version__document", "agenda_item", "chunk")
-        .prefetch_related("records", "document_version__document__associations__meeting")
+        .prefetch_related("records", "reservations", "document_version__document__associations__meeting")
         .annotate(meeting_date=Min("document_version__document__associations__meeting__date"))
         .order_by("-meeting_date", "document_version_id", "sequence")
     )
@@ -315,6 +407,8 @@ def votes_view(request):
         votes = votes.filter(
             Exists(VoteRecord.objects.filter(vote_id=OuterRef("pk"), party_code=party))
         )
+    if vote_type:
+        votes = votes.filter(vote_type=vote_type)
     if year:
         votes = votes.filter(meeting_date__year=year)
 
@@ -344,7 +438,80 @@ def votes_view(request):
             "total_records": VoteRecord.objects.filter(vote__document_version_id__in=current_ids).count(),
             "party_options": party_options,
             "year_options": year_options,
-            "selected": {"parti": party, "ar": year},
+            "type_options": Vote.VoteType.choices,
+            "selected": {"parti": party, "typ": vote_type, "ar": year},
+        },
+    )
+
+
+def member_view(request, slug):
+    """A member's voting history, matched by name across current versions.
+
+    Protocols name members in plain text, so the match is by normalized name;
+    same-named members cannot be told apart and name variants are grouped.
+    """
+    variants = sorted(
+        {
+            name
+            for name in VoteRecord.objects.values_list("member_name", flat=True).distinct()
+            if slugify(name) == slug
+        }
+    )
+    if not variants:
+        raise Http404("Ingen ledamot med det namnet.")
+    current_ids = list(
+        Document.objects.exclude(current_version=None).values_list("current_version_id", flat=True)
+    )
+    records = list(
+        VoteRecord.objects.filter(
+            member_name__in=variants, vote__document_version_id__in=current_ids
+        ).select_related("vote")
+    )
+    votes = (
+        Vote.objects.filter(records__member_name__in=variants, document_version_id__in=current_ids)
+        .annotate(meeting_date=Min("document_version__document__associations__meeting__date"))
+        .select_related("document_version__document", "agenda_item", "chunk")
+        .prefetch_related("reservations")
+        .order_by("-meeting_date", "document_version_id", "sequence")
+    )
+    record_by_vote = {record.vote_id: record for record in records}
+
+    stance_counts = {stance: 0 for stance in _STANCE_ORDER}
+    party_codes: dict[str, int] = {}
+    rows = []
+    for vote in votes:
+        record = record_by_vote.get(vote.pk)
+        if record is None:
+            continue
+        stance_counts[record.stance] = stance_counts.get(record.stance, 0) + 1
+        party_codes[record.party_code] = party_codes.get(record.party_code, 0) + 1
+        agenda_title = vote.agenda_item.title if vote.agenda_item else vote.agenda_title
+        rows.append(
+            {
+                "vote": vote,
+                "record": record,
+                "document": vote.document_version.document,
+                "subject": agenda_title or vote.proposition or "Röstning",
+            }
+        )
+    party_options = sorted(party_codes, key=party_codes.get, reverse=True)
+
+    return render(
+        request,
+        "website/member.html",
+        {
+            "slug": slug,
+            "name": variants[0],
+            "variants": variants,
+            "parties": [
+                {"code": code, "label": party_label(code), "css": party_css_class(code)}
+                for code in party_options
+            ],
+            "stance_counts": [
+                {"label": _STANCE_LABELS[stance], "count": stance_counts[stance]}
+                for stance in _STANCE_ORDER
+            ],
+            "rows": rows,
         },
     )
 
@@ -365,11 +532,20 @@ def document_detail_view(request, pk):
     )
     votes = []
     if current is not None and current.processing_status == DocumentVersion.Status.PROCESSED:
+        seat_count = next(
+            (
+                association.meeting.body.seat_count
+                for association in associations
+                if association.meeting.body.seat_count
+            ),
+            None,
+        )
         votes = _shape_votes(
             Vote.objects.filter(document_version=current)
-            .prefetch_related("records")
-            .select_related("chunk")
-            .order_by("sequence")
+            .prefetch_related("records", "reservations")
+            .select_related("chunk", "agenda_item")
+            .order_by("sequence"),
+            seat_count=seat_count,
         )
     return render(
         request,

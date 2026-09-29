@@ -74,9 +74,6 @@ form button {
     padding: 0.45rem 0.6rem; border: 1px solid var(--line); border-radius: 4px; background: #fff;
 }
 .ai-actions { display: flex; gap: 0.75rem; margin-top: 1rem; }
-.ai-actions button.secondary, .ai-summary button {
-    background: #fff; color: var(--accent); border: 1px solid var(--line);
-}
 .ai-status { font-size: 0.9rem; margin: 0.5rem 0; }
 .ai-status.ok { color: #1a6b3c; }
 .ai-status.error { color: #a4262c; }
@@ -129,6 +126,36 @@ details.chunk pre {
 .vote-body { padding: 0.5rem 0.9rem 0.9rem; border-top: 1px solid var(--line); }
 .vote-body p { margin: 0.4rem 0; }
 .vote-outcome { color: #555; font-size: 0.9rem; }
+.vote-agenda { font-weight: 600; margin: 0.4rem 0; }
+.vote-proposition { color: #333; }
+.vote-decision { display: flex; flex-wrap: wrap; gap: 0.35rem 0.6rem; align-items: baseline; }
+.vote-margin { color: #555; font-size: 0.85rem; }
+.vote-type {
+    display: inline-block; padding: 0 0.5rem; border-radius: 999px;
+    font-size: 0.75rem; font-weight: 700; line-height: 1.5;
+    color: #fff; background: #6b6b6b; white-space: nowrap;
+}
+.vote-type-bifall { background: #1a6b3c; }
+.vote-type-avslag { background: #a4262c; }
+.vote-type-avvisning { background: #8a4a12; }
+.vote-type-ateremittera { background: #9a6b00; }
+.vote-type-bordlaggning { background: #4a5a6a; }
+.vote-type-val { background: #5b3a7e; }
+.vote-type-procedur { background: #4a5a6a; }
+.party-positions {
+    display: flex; flex-wrap: wrap; gap: 0.35rem 0.9rem;
+    margin: 0.5rem 0; font-size: 0.9rem;
+}
+.party-position { white-space: nowrap; color: #333; }
+.vote-reservations { margin: 0.6rem 0; }
+.vote-reservations h4 { margin: 0.4rem 0; font-size: 0.95rem; }
+.vote-reservation {
+    margin: 0.4rem 0; padding: 0.5rem 0.75rem;
+    background: var(--paper); border: 1px solid var(--line); border-radius: 4px;
+}
+.vote-reservation-meta { margin: 0 0 0.25rem; font-size: 0.85rem; color: #555; }
+.vote-reservation-kind { font-weight: 700; color: var(--ink); margin-right: 0.4rem; }
+.vote-reservation-text { margin: 0; font-size: 0.9rem; }
 table.vote-parties { border-collapse: collapse; font-size: 0.9rem; margin: 0.5rem 0; background: #fff; }
 table.vote-parties th, table.vote-parties td {
     border: 1px solid var(--line); padding: 0.25rem 0.6rem; text-align: center;
@@ -150,11 +177,19 @@ table.vote-parties td:first-child { text-align: left; }
 .party-up { background: #6d5f8e; }
 .party-other { background: #6b6b6b; }
 .vote-members { font-size: 0.9rem; color: #444; overflow-wrap: anywhere; }
+.vote-members a { color: #444; text-decoration: none; border-bottom: 1px dotted #999; }
+.vote-members a:hover { color: var(--accent); border-bottom-color: var(--accent); }
 .vote-source a { color: var(--accent); font-size: 0.9rem; }
+
+.ai-vote { margin-top: 0.6rem; }
+.ai-vote button, .ai-actions button.secondary, .ai-summary button {
+    background: #fff; color: var(--accent); border: 1px solid var(--line);
+}
 
 ul.vote-list { list-style: none; padding-left: 0; }
 .vote-row { margin: 1rem 0; padding-bottom: 0.9rem; border-bottom: 1px solid var(--line); }
-.vote-row .vote-tally { font-weight: 600; }
+.vote-row .vote-tally { font-weight: 600; margin-left: 0.35rem; }
+.vote-row .vote-type { margin-left: 0.35rem; }
 .vote-row .vote-label { color: #444; font-size: 0.9rem; margin: 0.35rem 0; }
 .stance-strip { display: flex; flex-wrap: wrap; gap: 0.35rem 1.25rem; margin: 0.45rem 0; font-size: 0.9rem; }
 .stance-strip strong { font-weight: 600; color: #555; margin-right: 0.3rem; }
@@ -166,6 +201,22 @@ ul.vote-list { list-style: none; padding-left: 0; }
 }
 .vote-chip:hover { text-decoration: none; background: #164a6e; }
 .filters label.check { flex-direction: row; align-items: center; gap: 0.4rem; justify-content: flex-end; }
+
+ul.member-votes { list-style: none; padding-left: 0; }
+.member-vote-row {
+    margin: 0.8rem 0; padding-bottom: 0.8rem; border-bottom: 1px solid var(--line);
+    display: flex; flex-wrap: wrap; gap: 0.25rem 0.75rem; align-items: baseline;
+}
+.member-vote-row .meta { width: 100%; margin: 0; }
+.member-vote-row .doc-link { font-size: 1rem; }
+.stance-badge {
+    display: inline-block; padding: 0 0.5rem; border-radius: 999px;
+    font-size: 0.78rem; font-weight: 700; color: #fff; white-space: nowrap;
+}
+.stance-ja { background: #1a6b3c; }
+.stance-nej { background: #a4262c; }
+.stance-avstar { background: #6b6b6b; }
+.stance-franvarande { background: #9a9a9a; }
 
 footer { border-top: 1px solid var(--line); margin-top: 2rem; }
 footer p { max-width: 62rem; margin: 0 auto; padding: 1rem 1.25rem; color: #555; font-size: 0.85rem; }

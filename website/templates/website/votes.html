@@ -18,6 +18,14 @@
                 {% endfor %}
             </select>
         </label>
+        <label>Typ
+            <select name="typ">
+                <option value="">Alla</option>
+                {% for code, label in type_options %}
+                <option value="{{ code }}" {% if selected.typ == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </label>
         <label>År
             <select name="ar">
                 <option value="">Alla</option>
@@ -40,6 +48,7 @@
         </p>
         <a class="doc-link" href="{% url 'website:document-detail' item.document.pk %}#vote-{{ item.vote.pk }}">{{ item.document.title }}</a>
         <span class="vote-tally">{{ item.tally_text|default:"röstlängd saknas" }}</span>
+        {% if item.type %}<span class="vote-type vote-type-{{ item.type.code }}">{{ item.type.label }}</span>{% endif %}
         {% if item.strip %}
         <p class="stance-strip">
             {% for group in item.strip %}
@@ -49,7 +58,7 @@
             {% endfor %}
         </p>
         {% endif %}
-        {% if item.vote.proposition %}<p class="vote-label">{{ item.vote.proposition|truncatechars:140 }}</p>{% endif %}
+        {% if item.vote.proposition and item.vote.proposition != item.subject %}<p class="vote-label">{{ item.vote.proposition|truncatechars:140 }}</p>{% endif %}
     </li>
     {% empty %}
     <li class="notice">Inga röstningar matchar filtret.</li>

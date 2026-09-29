@@ -14,6 +14,7 @@ from .models import (
     Meeting,
     Vote,
     VoteRecord,
+    VoteReservation,
 )
 
 
@@ -26,7 +27,7 @@ class AuthorityAdmin(admin.ModelAdmin):
 
 @admin.register(Body)
 class BodyAdmin(admin.ModelAdmin):
-    list_display = ("name", "authority", "slug", "source_url")
+    list_display = ("name", "authority", "slug", "seat_count", "source_url")
     list_filter = ("authority",)
     search_fields = ("name",)
 
@@ -130,20 +131,34 @@ class VoteRecordInline(admin.TabularInline):
     fields = ("position", "member_name", "party_code", "stance")
 
 
+class VoteReservationInline(admin.TabularInline):
+    model = VoteReservation
+    extra = 0
+    fields = ("position", "kind", "party_codes", "member_name", "text")
+
+
 @admin.register(Vote)
 class VoteAdmin(admin.ModelAdmin):
     list_display = (
         "document_version",
         "sequence",
+        "vote_type",
         "has_details",
         "tally_yes",
         "tally_no",
         "records_match_tally",
         "parser_version",
     )
-    list_filter = ("has_details", "records_match_tally")
+    list_filter = ("has_details", "records_match_tally", "vote_type")
     raw_id_fields = ("document_version", "chunk", "agenda_item")
-    inlines = [VoteRecordInline]
+    inlines = [VoteRecordInline, VoteReservationInline]
+
+
+@admin.register(VoteReservation)
+class VoteReservationAdmin(admin.ModelAdmin):
+    list_display = ("vote", "position", "kind", "party_codes", "member_name")
+    list_filter = ("kind",)
+    search_fields = ("text", "member_name", "party_codes")
 
 
 @admin.register(IngestionRun)

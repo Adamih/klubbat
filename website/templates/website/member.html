@@ -1,0 +1,30 @@
+{% extends "website/base.html" %}
+{% block title %}{{ name }} — röstningar{% endblock %}
+{% block content %}
+<h1>{{ name }}</h1>
+<p class="meta">
+    {% for p in parties %}<span class="party {{ p.css }}">{{ p.code }}</span> {{ p.label }}{% if not forloop.last %} · {% endif %}{% endfor %}
+    · {{ rows|length }} röstningar
+    {% for s in stance_counts %}{% if s.count %} · {{ s.count }} {{ s.label|lower }}{% endif %}{% endfor %}
+</p>
+<p class="meta">Historiken matchas på namn i protokollen; ledamöter med samma namn kan inte särskiljas.
+{% if variants|length > 1 %} Namnvarianter som slagits samman: {{ variants|join:", " }}.{% endif %}</p>
+
+<ul class="member-votes">
+    {% for row in rows %}
+    <li class="member-vote-row">
+        <p class="meta">
+            {% if row.vote.meeting_date %}{{ row.vote.meeting_date|date:"Y-m-d" }}{% endif %}
+            · {{ row.document.title }}
+        </p>
+        <a class="doc-link" href="{% url 'website:document-detail' row.document.pk %}#vote-{{ row.vote.pk }}">{{ row.subject|truncatechars:90 }}</a>
+        <span class="stance-badge stance-{{ row.record.stance }}">{{ row.record.get_stance_display }}</span>
+        {% if row.vote.tally_yes is not None %}
+        <span class="vote-tally">{{ row.vote.tally_yes }}–{{ row.vote.tally_no }}</span>
+        {% endif %}
+    </li>
+    {% empty %}
+    <li class="notice">Inga röstningar hittades för denna ledamot.</li>
+    {% endfor %}
+</ul>
+{% endblock %}
