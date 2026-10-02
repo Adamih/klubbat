@@ -39,6 +39,7 @@
         {% if row.decision.outcome != 'annat' %}<span class="vote-type vote-type-{{ row.decision.outcome }}">{{ row.decision.get_outcome_display }}</span>{% endif %}
         {{ row.decision.decision_text }}
     </p>
+    {% include "website/_tag_chips.html" with decision=row.decision %}
 </div>
 {% endfor %}
 {% else %}

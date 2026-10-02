@@ -374,6 +374,59 @@ class VoteRecord(models.Model):
         return f"{self.member_name} ({self.party_code}) {self.stance}"
 
 
+class Topic(models.Model):
+    """A policy-area label in the fixed classifier taxonomy (defined in
+    ingestion/classify.py). Rows are seeded from the constant; removed labels
+    are retired manually in admin."""
+
+    slug = models.SlugField(max_length=100, unique=True)
+    label = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["label"]
+
+    def __str__(self) -> str:
+        return self.label
+
+
+class Tag(models.Model):
+    """One topic classification of a decision or initiative document (stage D).
+
+    One tag per target, stamped with classifier_version and a confidence in
+    [0, 1]. Rows tagged by hand (is_manual) are the training seed for the
+    centroid classifier and are never overwritten by re-classification.
+    """
+
+    decision = models.ForeignKey(Decision, null=True, blank=True, on_delete=models.CASCADE, related_name="tags")
+    document = models.ForeignKey(Document, null=True, blank=True, on_delete=models.CASCADE, related_name="tags")
+    topic = models.ForeignKey(Topic, on_delete=models.CASCADE, related_name="tags")
+    confidence = models.FloatField(default=0.0)
+    classifier_version = models.CharField(max_length=100)
+    is_manual = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["decision", "topic"],
+                condition=Q(decision__isnull=False),
+                name="uniq_tag_decision_topic",
+            ),
+            models.UniqueConstraint(
+                fields=["document", "topic"],
+                condition=Q(document__isnull=False),
+                name="uniq_tag_document_topic",
+            ),
+        ]
+        indexes = [models.Index(fields=["topic", "decision"]), models.Index(fields=["topic", "document"])]
+
+    def __str__(self) -> str:
+        target = self.decision or self.document
+        return f"{self.topic} ({self.confidence:.2f}) on {target}"
+
+
 class IngestionRun(models.Model):
     class Status(models.TextChoices):
         RUNNING = "running", "Pågående"

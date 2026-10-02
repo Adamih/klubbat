@@ -40,6 +40,16 @@ WITH matched AS (
           SELECT 1 FROM core_vote v
           WHERE v.document_version_id = d.current_version_id
       ))
+      AND (:topic IS NULL OR EXISTS (
+          SELECT 1 FROM core_tag t
+          WHERE t.topic_id = :topic
+            AND (t.document_id = d.id
+                 OR EXISTS (
+                     SELECT 1 FROM core_decision de
+                     WHERE de.id = t.decision_id
+                       AND de.document_version_id = d.current_version_id
+                 ))
+      ))
       AND EXISTS (
           SELECT 1
           FROM core_documentassociation da
@@ -84,6 +94,7 @@ def search(
     date_from: str | None = None,
     date_to: str | None = None,
     has_votes: bool | None = None,
+    topic_id: int | None = None,
     limit: int = 20,
     offset: int = 0,
 ) -> dict:
@@ -97,6 +108,7 @@ def search(
         "date_from": date_from,
         "date_to": date_to,
         "has_votes": 1 if has_votes else None,
+        "topic": topic_id,
         "limit": limit,
         "offset": offset,
     }

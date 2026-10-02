@@ -8,11 +8,22 @@ from django.utils import timezone
 
 from core.models import Document, DocumentVersion, IngestionRun
 from ingestion import pipeline
-from ingestion.ir import IR_VERSION
+from ingestion.ir import IR_VERSION, _clean_markdown
 from ingestion.management.commands.discover_meetings import _summary
 
 
 pytestmark = pytest.mark.django_db
+
+
+def test_clean_markdown_strips_xberg_annotations():
+    raw = (
+        "Kommunfullmäktiges protokoll måndagen (xberg:internal:font-size-pt: 18.96)\n\n"
+        "Plats och tid (xberg:internal:font-size-pt: 15)\nStadshuset, klockan 13:15."
+    )
+    clean = _clean_markdown(raw)
+    assert "xberg:internal" not in clean
+    assert "Kommunfullmäktiges protokoll måndagen" in clean
+    assert "Plats och tid\nStadshuset, klockan 13:15." in clean
 
 
 def test_extraction_stores_markdown(stored_version):

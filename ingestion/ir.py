@@ -12,6 +12,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -23,6 +24,12 @@ log = logging.getLogger(__name__)
 
 IR_VERSION = "xberg-md-v1"
 EXTRACTION_TIMEOUT = 1800  # seconds per document (scanned compilations are slow)
+
+# xberg inlines internal run annotations (font sizes) as literal text in the
+# markdown for documents whose runs carry them. They are not consumed
+# downstream, so the markdown is normalized at the IR boundary; the sidecar
+# keeps the raw xberg output.
+ANNOTATION_RE = re.compile(r"\s*\(xberg:internal:[^)]*\)")
 
 
 class ExtractionError(Exception):
@@ -57,6 +64,10 @@ def _config() -> xberg.ExtractionConfig:
     )
 
 
+def _clean_markdown(markdown: str) -> str:
+    return ANNOTATION_RE.sub("", markdown)
+
+
 def extract_ir(pdf_path: Path, derived_dir: Path, sha256: str) -> IrResult:
     """Extract one PDF into the IR. Sidecar is written atomically on success."""
     try:
@@ -68,7 +79,7 @@ def extract_ir(pdf_path: Path, derived_dir: Path, sha256: str) -> IrResult:
     if not result.results:
         raise ExtractionError("xberg produced no result")
     doc = result.results[0]
-    markdown = doc.content or ""
+    markdown = _clean_markdown(doc.content or "")
     if not markdown.strip():
         raise ExtractionError("no text could be extracted (all pages empty or OCR unavailable)")
 
@@ -125,7 +136,7 @@ def _cached_ir(version) -> IrResult | None:
     if data.get("ir_version") != IR_VERSION or not data.get("markdown", "").strip():
         return None
     return IrResult(
-        markdown=data["markdown"],
+        markdown=_clean_markdown(data["markdown"]),
         ocr_used=bool(data.get("ocr_used")),
         page_count=int(data.get("page_count") or 0),
         quality=data.get("quality"),

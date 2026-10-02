@@ -33,6 +33,7 @@ Skapa en adminanvändare för /admin/: `uv run python manage.py createsuperuser`
 | `extract_votes [--force]` | Parsa röstningar ur IR-markdown. Idempotent; hoppar över versioner med aktuell parser-version. |
 | `extract_decisions [--force]` | Parsa beslutblock ("§ N … Beslut") ur IR-markdown. Idempotent, protokoll endast. |
 | `build_cases` | Bygg ärendesidor: länka dokument till ärenden via diarienummer och para interpellationer/frågor via titlar. Idempotent; bygger om alla länkar. Körs automatiskt i `backfill`/`ingest_recent`. |
+| `classify_content [--force]` | Ämnestaggar beslut och initiativ per policyområde (närmaste-centroid över svenska menings-embeddings). Manuella taggar i admin skyddas och tränar klassificeraren. Körs automatiskt i `backfill`/`ingest_recent`. |
 | `retry_failed` | Ladda om misslyckade nedladdningar, köa om misslyckad extraktion. |
 | `rebuild_search_index` | Bygg om FTS5-index från versionernas markdown. |
 | `backup_database [--originals] [--no-derived]` | SQLite-onlinebackup (WAL-säkert) till `backups/`, inklusive `data/derived/` (IR-cachen: markdown + per-sidig text). |
@@ -86,6 +87,24 @@ dyra att återskapa) kopieras som standard till `backups/derived-<tidsstämpel>/
 | Webb | `website/` — serverrenderade mallar + HTMX; Sök, Möten, Mötesdetalj, Dokumentdetalj (markdown), Versioner, Status |
 | AI (BYO-modell) | `static/js/ai.js` + Inställningar-sidan — sammanfattning direkt från webbläsaren |
 | Admin | `core/admin.py` — inspektion, metadata, retry-åtgärder |
+
+## Ämnesklassificering (stage D)
+
+Beslut och initiativ (motioner, interpellationer, frågor) taggas automatiskt
+med policyområden — skola, trafik, miljö, ekonomi m.fl. (fast taxonomi i
+`ingestion/classify.py`). Klassificeraren är en **närmaste-centroid över
+svenska menings-embeddings** (`KBLab/sentence-bert-swedish-cased`, Kungliga
+biblioteket): varje ämnes centroid förankras i ämnets definition + seedfraser
+och förbättras av handtaggade poster. Ingen modellträning behövs.
+
+- Manuella taggar (i `/admin/`, bocka i *is_manual*) skyddas alltid mot
+  omklassificering och används som träningsdata — varje korrigering gör
+  klassificeraren bättre.
+- Taggarna bär `classifier_version` och konfidens, och kan inte skriva över
+  tryckt metadata.
+- Sökningen har ett ämnesfilter (`?amne=`), och beslut-/ärendesidor visar
+  ämnes-chips.
+- Första körningen laddar ner modellen (~500 MB) från HuggingFace.
 
 ## AI-funktioner (bring your own model)
 

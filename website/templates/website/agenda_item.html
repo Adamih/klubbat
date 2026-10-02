@@ -25,6 +25,7 @@
     {% if row.document %}
     <p class="meta"><a href="{% url 'website:document-detail' row.document.pk %}">{{ row.document.title|truncatechars:80 }}</a></p>
     {% endif %}
+    {% include "website/_tag_chips.html" with decision=row.decision %}
 </div>
 {% endfor %}
 {% else %}

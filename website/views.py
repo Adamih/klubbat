@@ -23,6 +23,8 @@ from core.models import (
     DocumentVersion,
     IngestionRun,
     Meeting,
+    Tag,
+    Topic,
     Vote,
     VoteRecord,
 )
@@ -218,6 +220,9 @@ def search_view(request):
     date_from = _date_param(request, "fran")
     date_to = _date_param(request, "till")
     has_votes = request.GET.get("rostning", "").strip() == "1"
+    topic_slug = request.GET.get("amne", "").strip() or None
+    topic = Topic.objects.filter(slug=topic_slug).first() if topic_slug else None
+    topic_id = topic.pk if topic else None
     page = max(1, _int_param(request, "sida") or 1)
 
     error = None
@@ -225,39 +230,32 @@ def search_view(request):
     total = 0
     page_count = 0
 
+    def run_search(offset: int):
+        return service.search(
+            match_expr,
+            doc_type=doc_type,
+            meeting_id=meeting_id,
+            authority_id=authority_id,
+            body_id=body_id,
+            date_from=date_from,
+            date_to=date_to,
+            has_votes=has_votes,
+            topic_id=topic_id,
+            limit=PAGE_SIZE,
+            offset=offset,
+        )
+
     if query:
         match_expr = build_match_query(query)
         if not match_expr:
             error = "Sökfrågan innehöll inga sökbara ord."
         else:
-            data = service.search(
-                match_expr,
-                doc_type=doc_type,
-                meeting_id=meeting_id,
-                authority_id=authority_id,
-                body_id=body_id,
-                date_from=date_from,
-                date_to=date_to,
-                has_votes=has_votes,
-                limit=PAGE_SIZE,
-                offset=(page - 1) * PAGE_SIZE,
-            )
+            data = run_search((page - 1) * PAGE_SIZE)
             total = data["total"]
             page_count = max(1, math.ceil(total / PAGE_SIZE)) if total else 1
             if page > page_count and total:
                 page = page_count
-                data = service.search(
-                    match_expr,
-                    doc_type=doc_type,
-                    meeting_id=meeting_id,
-                    authority_id=authority_id,
-                    body_id=body_id,
-                    date_from=date_from,
-                    date_to=date_to,
-                    has_votes=has_votes,
-                    limit=PAGE_SIZE,
-                    offset=(page - 1) * PAGE_SIZE,
-                )
+                data = run_search((page - 1) * PAGE_SIZE)
             meeting_info = _meeting_info_for_documents([row["document_id"] for row in data["results"]])
             for row in data["results"]:
                 references = meeting_info.get(row["document_id"], [])
@@ -283,6 +281,7 @@ def search_view(request):
             "error": error,
             "base_qs": filter_params.urlencode(),
             "doc_types": Document.DocType.choices,
+            "topics": Topic.objects.all(),
             "selected": {
                 "typ": doc_type,
                 "mote": meeting_id,
@@ -291,6 +290,7 @@ def search_view(request):
                 "fran": date_from,
                 "till": date_to,
                 "rostning": has_votes,
+                "amne": topic_slug,
             },
             "meetings": Meeting.objects.order_by("-date")[:200],
             "authorities": Authority.objects.all(),
@@ -571,6 +571,7 @@ def decisions_view(request):
 
     decisions = (
         base.select_related("document_version__document")
+        .prefetch_related("tags__topic")
         .annotate(meeting_date=Min("document_version__document__associations__meeting__date"))
         .order_by("-meeting_date", "document_version_id", "sequence")
     )
@@ -642,6 +643,7 @@ def case_view(request, dnr):
             for decision in Decision.objects.filter(document_version_id__in=current_protocol_ids)
             .exclude(printed_dnr="")
             .select_related("document_version__document")
+            .prefetch_related("tags__topic")
             .annotate(meeting_date=Min("document_version__document__associations__meeting__date"))
             if normalize_dnr(decision.printed_dnr) == dnr
         ),
@@ -723,6 +725,7 @@ def agenda_item_view(request, pk):
         decisions = list(
             Decision.objects.filter(document_version_id__in=current_ids, printed_agenda_number=item.agenda_number)
             .select_related("document_version__document")
+            .prefetch_related("tags__topic")
             .order_by("document_version_id", "sequence")
         )
 

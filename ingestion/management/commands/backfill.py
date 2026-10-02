@@ -35,6 +35,7 @@ class Command(BaseCommand):
                 pipeline.extract_votes(run=run)
                 pipeline.extract_decisions(run=run)
                 pipeline.build_cases()
+                pipeline.classify_content(run=run)
             except Exception as exc:
                 pipeline.finish_run(run, ok=False, error_summary=f"{type(exc).__name__}: {exc}")
                 raise CommandError(f"Backfill failed: {exc}")

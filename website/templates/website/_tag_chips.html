@@ -1,0 +1,6 @@
+{% comment %}Topic chips for one decision (`decision` with tags prefetched).{% endcomment %}
+{% for tag in decision.tags.all %}
+<a class="topic-chip topic-{{ tag.topic.slug }}"
+   href="{% url 'website:search' %}?amne={{ tag.topic.slug }}"
+   title="{{ tag.topic.label }}{% if not tag.is_manual %} · säkerhet {{ tag.confidence|floatformat:2 }}{% endif %}{% if tag.is_manual %} · manuell{% endif %}">{{ tag.topic.label }}</a>
+{% endfor %}

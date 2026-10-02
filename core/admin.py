@@ -14,6 +14,8 @@ from .models import (
     DocumentVersion,
     IngestionRun,
     Meeting,
+    Tag,
+    Topic,
     Vote,
     VoteRecord,
     VoteReservation,
@@ -57,6 +59,13 @@ class AgendaItemAdmin(admin.ModelAdmin):
     search_fields = ("title", "diarienummer")
 
 
+class TagInline(admin.TabularInline):
+    model = Tag
+    extra = 0
+    fields = ("topic", "confidence", "is_manual", "classifier_version")
+    raw_id_fields = ("topic",)
+
+
 class DocumentAssociationInline(admin.TabularInline):
     model = DocumentAssociation
     extra = 0
@@ -75,7 +84,7 @@ class DocumentAdmin(admin.ModelAdmin):
     list_display = ("title", "doc_type", "current_version_status", "created_display")
     list_filter = ("doc_type", "current_version__processing_status")
     search_fields = ("title", "primary_source_url")
-    inlines = [DocumentAssociationInline, DocumentVersionInline]
+    inlines = [DocumentAssociationInline, DocumentVersionInline, TagInline]
 
     @admin.display(description="Status", ordering="current_version__processing_status")
     def current_version_status(self, obj):
@@ -148,6 +157,30 @@ class VoteAdmin(admin.ModelAdmin):
     inlines = [VoteRecordInline, VoteReservationInline]
 
 
+@admin.register(Topic)
+class TopicAdmin(admin.ModelAdmin):
+    list_display = ("label", "slug", "description")
+    search_fields = ("label", "slug")
+
+
+@admin.register(Tag)
+class TagAdmin(admin.ModelAdmin):
+    list_display = ("topic", "target_display", "confidence", "is_manual", "classifier_version")
+    list_filter = ("topic", "is_manual")
+    search_fields = ("decision__decision_text", "decision__printed_agenda_title", "document__title")
+    raw_id_fields = ("decision", "document", "topic")
+    help_text = (
+        "Manuell taggning: bock i is_manual — den skyddas mot omklassificering "
+        "och används som träningsdata för centroid-klassificeraren."
+    )
+
+    @admin.display(description="Mål")
+    def target_display(self, obj):
+        if obj.decision is not None:
+            return f"beslut: {obj.decision.printed_agenda_title or obj.decision.decision_text[:60]}"
+        return f"dok: {obj.document.title[:60]}" if obj.document else "—"
+
+
 @admin.register(VoteReservation)
 class VoteReservationAdmin(admin.ModelAdmin):
     list_display = ("vote", "position", "kind", "party_codes", "member_name")
@@ -179,6 +212,7 @@ class DecisionAdmin(admin.ModelAdmin):
     list_filter = ("outcome",)
     search_fields = ("decision_text", "printed_agenda_title", "printed_dnr")
     raw_id_fields = ("document_version",)
+    inlines = [TagInline]
 
 
 @admin.register(IngestionRun)

@@ -485,6 +485,13 @@ def build_cases() -> dict:
     return cases.build_cases()
 
 
+def classify_content(*, run, force: bool = False) -> dict:
+    """Stage D: policy-area tags for decisions/initiatives (see classify.py)."""
+    from . import classify
+
+    return classify.classify_content(run=run, force=force)
+
+
 def retry_failed(run: IngestionRun, *, document_id: int | None = None, process: bool = True) -> dict:
     """Re-attempt failed downloads (null hash) and requeue failed extractions."""
     stats = {"redownloaded": 0, "requeued": 0}
