@@ -1,8 +1,8 @@
 """Search execution over the FTS5 index.
 
-- Only chunks of current document versions are searchable (older versions stay
-  reachable from document detail pages).
-- Matching chunks are grouped by document so one long PDF cannot dominate results.
+- One FTS row per document version (indexing the version's markdown); only
+  chunks-of-the-current-version logic is gone: a search hit is a document hit,
+  resolving to the document's current version.
 - Snippets come from SQLite with sentinel markers, HTML-escaped here before the
   markers are replaced with <mark> tags.
 - Every parameter is bound; the SQL contains no string interpolation of user input.
@@ -10,6 +10,7 @@
 
 import html
 import logging
+import re
 
 from django.db import connection
 
@@ -21,24 +22,18 @@ MARK_END = "\u27e7"    # ⟧
 _MATCHED_SQL = """
 WITH matched AS (
     SELECT
-        c.id AS chunk_id,
         dv.id AS version_id,
         d.id AS document_id,
         d.title AS document_title,
         d.doc_type AS doc_type,
         d.primary_source_url AS source_url,
         dv.sha256 AS sha256,
-        c.title AS chunk_title,
-        c.page_start AS page_start,
-        c.page_end AS page_end,
-        c.agenda_item_id AS agenda_item_id,
-        bm25(search_chunkfts, 5.0, 1.0) AS rank,
-        snippet(search_chunkfts, 1, '⟦', '⟧', ' … ', 16) AS snippet_raw
-    FROM search_chunkfts f
-    JOIN core_chunk c ON c.id = f.rowid
-    JOIN core_documentversion dv ON dv.id = c.document_version_id
+        bm25(search_documentfts, 5.0, 1.0) AS rank,
+        snippet(search_documentfts, 1, '⟦', '⟧', ' … ', 24) AS snippet_raw
+    FROM search_documentfts f
+    JOIN core_documentversion dv ON dv.id = f.rowid
     JOIN core_document d ON d.id = dv.document_id
-    WHERE search_chunkfts MATCH :q
+    WHERE search_documentfts MATCH :q
       AND dv.id = d.current_version_id
       AND (:doc_type IS NULL OR d.doc_type = :doc_type)
       AND (:has_votes IS NULL OR EXISTS (
@@ -62,24 +57,20 @@ WITH matched AS (
 """
 
 _RESULTS_SQL = _MATCHED_SQL + """
-, ranked AS (
-    SELECT matched.*,
-           ROW_NUMBER() OVER (PARTITION BY document_id ORDER BY rank, chunk_id) AS rn,
-           COUNT(*) OVER (PARTITION BY document_id) AS match_count
-    FROM matched
-)
-SELECT * FROM ranked WHERE rn = 1
+SELECT * FROM matched
 ORDER BY rank
 LIMIT :limit OFFSET :offset
 """
 
 _COUNT_SQL = _MATCHED_SQL + """
-SELECT COUNT(*) FROM (SELECT document_id FROM matched GROUP BY document_id)
+SELECT COUNT(*) FROM matched
 """
 
 
 def _highlight(snippet_raw: str) -> str:
-    escaped = html.escape(snippet_raw)
+    """Strip markdown decorations (the index holds IR markdown), then mark hits."""
+    cleaned = re.sub(r"[*`]+", "", re.sub(r"(?m)^\s*#{1,6}\s+", "", snippet_raw))
+    escaped = html.escape(cleaned)
     return escaped.replace(MARK_START, "<mark>").replace(MARK_END, "</mark>")
 
 
@@ -96,7 +87,7 @@ def search(
     limit: int = 20,
     offset: int = 0,
 ) -> dict:
-    """Run a grouped search. Returns {'total': int, 'results': [dict, ...]}."""
+    """Run a document-level search. Returns {'total': int, 'results': [dict, ...]}."""
     params = {
         "q": match_expr,
         "doc_type": doc_type,
@@ -125,5 +116,5 @@ def search(
 
 def fts_row_count() -> int:
     with connection.cursor() as cursor:
-        cursor.execute("SELECT COUNT(*) FROM search_chunkfts")
+        cursor.execute("SELECT COUNT(*) FROM search_documentfts")
         return cursor.fetchone()[0]

@@ -3,7 +3,7 @@
 import pytest
 from django.urls import reverse
 
-from core.models import AgendaItem, Chunk, DocumentAssociation, DocumentVersion, Vote, VoteRecord
+from core.models import AgendaItem, DocumentAssociation, DocumentVersion, Vote, VoteRecord
 from ingestion import pipeline, votes
 from search import service
 
@@ -18,18 +18,13 @@ JA_LIST = (
 NEJ_LIST = "Nej-röster avger:\nTherez Almerfors (M) och Kent Kumpula (SD)."
 
 
-def _chunk(text, pk=1, agenda_item=None):
-    return {"pk": pk, "agenda_item": agenda_item, "text": text}
-
-
 def test_parses_labeled_lists():
-    parsed = votes.parse_version([_chunk(f"Reservationer Moderaterna (M) reserverar sig.\nOmröstningsdetaljer\n{JA_LIST}\n{NEJ_LIST}")])
+    parsed = votes.parse_markdown(f"Reservationer Moderaterna (M) reserverar sig.\nOmröstningsdetaljer\n{JA_LIST}\n{NEJ_LIST}")
     assert len(parsed) == 1
     vote = parsed[0]
     assert vote.has_details
     assert [r.stance for r in vote.records] == ["ja"] * 6 + ["nej"] * 2
     assert vote.records[0].member_name == "Erik Pelling"
-    assert vote.records[0].party_code == "S"
     assert vote.records[2].member_name == "Caitlin Mc Evoy"  # line break inside list
     assert vote.records[3].member_name == "Asal Gohari"  # name split by line break
     assert vote.records[5].member_name == "Susanne Engström"  # " och" lead-in
@@ -41,17 +36,19 @@ def test_parses_labeled_lists():
 
 def test_unknown_party_code_and_absent_list():
     text = f"Omröstningsdetaljer\n{JA_LIST}\nFrånvarande:\nStefan Hanna (UP) och Lina Hamberg (UP)."
-    parsed = votes.parse_version([_chunk(text)])
+    parsed = votes.parse_markdown(text)
     assert len(parsed) == 1
     assert parsed[0].has_details
     assert [r.party_code for r in parsed[0].records][-2:] == ["UP", "UP"]
     assert [r.stance for r in parsed[0].records][-2:] == ["franvarande", "franvarande"]
 
 
-def test_block_straddling_chunks_with_page_noise():
-    first = _chunk("Omröstningsdetaljer\nJa-röst avger:\nErik Pelling (S), Kent", pk=1)
-    second = _chunk("Sida 27 (73) Protokoll 2025-02-24\nKumpula (SD) och Annika Jonsson (KD).", pk=2)
-    parsed = votes.parse_version([first, second])
+def test_page_noise_between_lists_does_not_break_parsing():
+    text = (
+        "Omröstningsdetaljer\nJa-röst avger:\nErik Pelling (S), Kent\n"
+        "Sida 27 (73) Protokoll 2025-02-24\nKumpula (SD) och Annika Jonsson (KD)."
+    )
+    parsed = votes.parse_markdown(text)
     assert len(parsed) == 1
     ja = [r for r in parsed[0].records if r.stance == "ja"]
     assert [(r.member_name, r.party_code) for r in ja] == [
@@ -59,17 +56,16 @@ def test_block_straddling_chunks_with_page_noise():
         ("Kent Kumpula", "SD"),
         ("Annika Jonsson", "KD"),
     ]
-    assert parsed[0].chunk_index == 0  # attributed to the chunk where the block starts
 
 
 def test_merged_page_header_does_not_eat_the_block():
-    # The chunker can merge a short page header into the paragraph line that
-    # carries the marker; stripping the header must not eat the block too.
+    # A page header merged into the line that carries the marker; stripping the
+    # header must not eat the block too.
     text = (
         "Sida 26 (73) Protokoll 2025-02-24 Ordföranden finner att motionen avslås. "
         "Omröstningsdetaljer\nJa-röst avger:\nErik Pelling (S) och Tobias Smedberg (V)."
     )
-    parsed = votes.parse_version([_chunk(text)])
+    parsed = votes.parse_markdown(text)
     assert len(parsed) == 1
     assert [r.member_name for r in parsed[0].records] == ["Erik Pelling", "Tobias Smedberg"]
 
@@ -81,7 +77,7 @@ def test_tally_only_vote_without_name_lists():
         "Rösta Ja för att avslå tilläggsyrkandet, rösta Nej för att bifalla tilläggsyrkandet.\n"
         "Med 39 ja-röster mot 40 nej-röster beslutades avslag."
     )
-    parsed = votes.parse_version([_chunk(text)])
+    parsed = votes.parse_markdown(text)
     assert len(parsed) == 1
     vote = parsed[0]
     assert not vote.has_details
@@ -100,7 +96,7 @@ def test_unmatched_gap_tally_stands_alone():
         "Omröstningsdetaljer\n"
         f"{JA_LIST}\n"
     )
-    parsed = votes.parse_version([_chunk(text)])
+    parsed = votes.parse_markdown(text)
     assert len(parsed) == 2
     standalone, block = parsed
     assert block.has_details and standalone.tally_yes == 2
@@ -110,21 +106,22 @@ def test_unmatched_gap_tally_stands_alone():
 
 def test_matching_tally_verifies():
     text = (
+        "Med 2 ja-röster mot 1 nej-röster beslutades avslag.\n"
         "Omröstningsdetaljer\n"
         "Ja-röst avger:\nErik Pelling (S) och Tobias Smedberg (V).\n"
         "Nej-röst avger:\nTherez Almerfors (M).\n"
     )
-    parsed = votes.parse_version([_chunk("Med 2 ja-röster mot 1 nej-röster beslutades avslag.\n" + text)])
+    parsed = votes.parse_markdown(text)
     vote = parsed[0]
     assert vote.has_details
     assert vote.records_match_tally is True
 
 
 def test_multiple_blocks_and_standalone_between():
-    first = f"Omröstningsdetaljer\nJa-röst avger:\nErik Pelling (S).\n"
+    first = "Omröstningsdetaljer\nJa-röst avger:\nErik Pelling (S).\n"
     middle = "Med 1 ja-röster mot 0 nej-röster beslutades bifall.\n"
-    second = f"Omröstningsdetaljer\nNej-röst avger:\nKent Kumpula (SD).\n"
-    parsed = votes.parse_version([_chunk(first + middle + second)])
+    second = "Omröstningsdetaljer\nNej-röst avger:\nKent Kumpula (SD).\n"
+    parsed = votes.parse_markdown(first + middle + second)
     # The middle tally matches neither block's lists, so it stands alone
     # between the two block votes.
     assert len(parsed) == 3
@@ -141,17 +138,31 @@ def test_rounds_inside_one_block():
         "Ja-röst avger:\nErik Pelling (S).\nNej-röst avger:\nTherez Almerfors (M).\n"
         "Omröstning nr 2 Nej-röst avger:\nKent Kumpula (SD).\nAvstår:\nStefan Hanna (UP).\n"
     )
-    parsed = votes.parse_version([_chunk(text)])
+    parsed = votes.parse_markdown(text)
     assert len(parsed) == 2
     assert [(r.stance, r.party_code) for r in parsed[0].records] == [("ja", "S"), ("nej", "M")]
     assert [(r.stance, r.party_code) for r in parsed[1].records] == [("nej", "SD"), ("avstar", "UP")]
 
 
 def test_tail_tally_becomes_standalone_vote():
-    parsed = votes.parse_version([_chunk(f"Omröstningsdetaljer\nJa-röst avger:\nErik Pelling (S).\nMed 1 ja-röster mot 0 nej-röster beslutades bifall.")])
+    parsed = votes.parse_markdown(
+        f"Omröstningsdetaljer\nJa-röst avger:\nErik Pelling (S).\nMed 1 ja-röster mot 0 nej-röster beslutades bifall."
+    )
     assert len(parsed) == 2  # the block vote + the tail tally as a standalone vote
     assert parsed[1].has_details is False
     assert parsed[1].tally_yes == 1
+
+
+def test_markdown_syntax_is_flattened():
+    # xberg markdown: heading markers, bold emphasis and page furniture must
+    # not interfere with list parsing.
+    text = (
+        "## § 45\n**Val av justerare samt justeringsdag**\n### Beslut\n*Jennie Claesson (L)* anmäler.\n"
+        "### Omröstningsdetaljer\nJa-röst avger:\nErik Pelling (S) och Tobias Smedberg (V).\n"
+    )
+    parsed = votes.parse_markdown(text)
+    assert len(parsed) == 1
+    assert [r.member_name for r in parsed[0].records] == ["Erik Pelling", "Tobias Smedberg"]
 
 
 def test_vote_type_classification():
@@ -192,7 +203,7 @@ def test_reservations_and_yttranden_parsed():
         "Utvecklingspartiet anser att projektet ska skrotas.\n"
         f"Omröstningsdetaljer\n{JA_LIST}\n{NEJ_LIST}"
     )
-    parsed = votes.parse_version([_chunk(text)])
+    parsed = votes.parse_markdown(text)
     assert len(parsed) == 1
     reservations = parsed[0].reservations
     assert [(r.kind, r.party_codes) for r in reservations] == [
@@ -208,15 +219,9 @@ def test_reservations_and_yttranden_parsed():
     assert reservations[2].text.startswith("Lina Hamberg (UP) inkommer")
 
 
-def test_agenda_item_resolved_from_printed_heading(source_tree, stored_version):
-    _, _, meeting = source_tree
-    item = AgendaItem.objects.create(
-        meeting=meeting,
-        agenda_number=18,
-        title="Svar på motion om att utreda en breddning av Kungsängsbron från Therez Almerfors (M)",
-    )
+def test_printed_agenda_item_captured_from_heading(stored_version):
     document, version = _processed_version(stored_version)
-    text = (
+    version.markdown = (
         "§ 18 Svar på motion om att utreda en breddning av Kungsängsbron från Therez Almerfors (M) "
         "KSN-2024-03238 Beslut Kommunfullmäktige beslutar att bifalla kommunstyrelsens förslag.\n"
         "Omröstning begärs och genomförs.\n"
@@ -224,19 +229,11 @@ def test_agenda_item_resolved_from_printed_heading(source_tree, stored_version):
         "bifalla kommunstyrelsens förslag.\n"
         f"Omröstningsdetaljer\n{JA_LIST}\n{NEJ_LIST}"
     )
-    Chunk.objects.create(
-        document_version=version,
-        sequence=999,
-        title=document.title,
-        text=text,
-        page_start=39,
-        page_end=40,
-        processing_version="test",
-    )
+    version.save(update_fields=["markdown"])
     pipeline.extract_votes(run=pipeline.begin_run("test"), version_ids=[version.id])
 
     vote = Vote.objects.get()
-    assert vote.agenda_item_id == item.pk
+    assert vote.printed_agenda_number == 18
     assert vote.vote_type == "bifall"
     assert "Kungsängsbron" in vote.agenda_title
     assert vote.decision_text == "bifalla kommunstyrelsens förslag"
@@ -249,17 +246,14 @@ def _processed_version(stored_version):
     return document, version
 
 
+def _seed_markdown(document, version, text):
+    version.markdown = text
+    version.save(update_fields=["markdown"])
+
+
 def test_extract_votes_pipeline_and_idempotency(stored_version):
     document, version = _processed_version(stored_version)
-    Chunk.objects.create(
-        document_version=version,
-        sequence=1,
-        title=document.title,
-        text=f"Omröstningsdetaljer\n{JA_LIST}\n{NEJ_LIST}",
-        page_start=1,
-        page_end=1,
-        processing_version="test",
-    )
+    _seed_markdown(document, version, f"Omröstningsdetaljer\n{JA_LIST}\n{NEJ_LIST}")
     run = pipeline.begin_run("test")
     stats = pipeline.extract_votes(run=run)
     assert stats["versions"] == 1
@@ -283,14 +277,10 @@ def test_extract_votes_pipeline_and_idempotency(stored_version):
 
 def test_document_detail_shows_votes_section(client, stored_version):
     document, version = _processed_version(stored_version)
-    chunk = Chunk.objects.create(
-        document_version=version,
-        sequence=1,
-        title=f"{document.title} — §12 Trafikfrågan",
-        text=f"Omröstningsdetaljer\n{JA_LIST}",
-        page_start=23,
-        page_end=23,
-        processing_version="test",
+    _seed_markdown(
+        document,
+        version,
+        f"Omröstningsdetaljer\n{JA_LIST}",
     )
     pipeline.extract_votes(run=pipeline.begin_run("test"), version_ids=[version.id])
     res = client.get(reverse("website:document-detail", args=[document.pk]))
@@ -298,11 +288,10 @@ def test_document_detail_shows_votes_section(client, stored_version):
     content = res.content.decode()
     assert "Röstningar" in content
     assert 'title="Socialdemokraterna"' in content  # party chip with full name
-    assert 'class="party-position"' in content  # party-line chips replace the counts table
+    assert 'class="party-position"' in content
     assert "Erik Pelling" in content
     assert reverse("website:member", args=["erik-pelling"]) in content  # name links to member page
-    assert f'id="chunk-{chunk.pk}"' in content
-    assert f'href="#chunk-{chunk.pk}"' in content
+    assert 'class="doc-text' in content  # rendered IR markdown
     assert "ai-vote-button" in content  # per-vote AI explainer
 
 
@@ -313,22 +302,9 @@ def test_document_detail_without_votes_hides_section(client, stored_version):
     assert '<section class="votes">' not in res.content.decode()
 
 
-def _seed_vote_chunks(document, version, with_agenda_item=None):
-    Chunk.objects.create(
-        document_version=version,
-        sequence=999,  # past any chunks created by a real extraction
-        title=f"{document.title} — §12 Trafikfrågan",
-        text=f"Omröstningsdetaljer\n{JA_LIST}\n{NEJ_LIST}",
-        page_start=23,
-        page_end=23,
-        processing_version="test",
-        agenda_item=with_agenda_item,
-    )
-
-
 def test_votes_page_lists_votes_and_filters(client, stored_version):
     document, version = _processed_version(stored_version)
-    _seed_vote_chunks(document, version)
+    _seed_markdown(document, version, f"Omröstningsdetaljer\n{JA_LIST}\n{NEJ_LIST}")
     pipeline.extract_votes(run=pipeline.begin_run("test"), version_ids=[version.id])
 
     res = client.get(reverse("website:votes"))
@@ -358,7 +334,7 @@ def test_meeting_detail_shows_vote_chip(client, stored_version, source_tree):
     association = DocumentAssociation.objects.get(document=document, meeting=meeting)
     association.agenda_item = agenda_item
     association.save(update_fields=["agenda_item"])
-    _seed_vote_chunks(document, version)
+    _seed_markdown(document, version, f"Omröstningsdetaljer\n{JA_LIST}\n{NEJ_LIST}")
     pipeline.extract_votes(run=pipeline.begin_run("test"), version_ids=[version.id])
 
     res = client.get(reverse("website:meeting-detail", args=[meeting.pk]))
@@ -380,13 +356,11 @@ def test_meeting_detail_without_votes_has_no_chip(client, stored_version, source
 
 def test_search_service_has_votes_filter(stored_version):
     document, version = _processed_version(stored_version)
-    run = pipeline.begin_run("test")
-    pipeline.process_versions(run=run, version_ids=[version.id], statuses=[DocumentVersion.Status.PROCESSED])
-
+    _seed_markdown(document, version, "Spårvägen till Stenhagen behandlades vid mötet.")
     assert service.search("Spårvägen", has_votes=None)["total"] == 1
     assert service.search("Spårvägen", has_votes=True)["total"] == 0
 
-    _seed_vote_chunks(document, version)
+    _seed_markdown(document, version, f"Spårvägen till Stenhagen behandlades vid mötet.\nOmröstningsdetaljer\n{JA_LIST}\n{NEJ_LIST}")
     pipeline.extract_votes(run=pipeline.begin_run("test"), version_ids=[version.id])
     assert service.search("Spårvägen", has_votes=True)["total"] == 1
     assert service.search("Spårvägen", has_votes=False)["total"] == 1
@@ -394,8 +368,7 @@ def test_search_service_has_votes_filter(stored_version):
 
 def test_search_view_vote_filter_checkbox(client, stored_version):
     document, version = _processed_version(stored_version)
-    run = pipeline.begin_run("test")
-    pipeline.process_versions(run=run, version_ids=[version.id], statuses=[DocumentVersion.Status.PROCESSED])
+    _seed_markdown(document, version, "Spårvägen till Stenhagen behandlades vid mötet.")
 
     res = client.get(reverse("website:search"), {"q": "Spårvägen", "rostning": "1"})
     assert res.status_code == 200
@@ -403,7 +376,7 @@ def test_search_view_vote_filter_checkbox(client, stored_version):
     assert "Har röstning" in content
     assert 'name="rostning" value="1" checked' in content
 
-    _seed_vote_chunks(document, version)
+    _seed_markdown(document, version, f"Spårvägen till Stenhagen behandlades vid mötet.\nOmröstningsdetaljer\n{JA_LIST}\n{NEJ_LIST}")
     pipeline.extract_votes(run=pipeline.begin_run("test"), version_ids=[version.id])
     res = client.get(reverse("website:search"), {"q": "Spårvägen", "rostning": "1"})
     assert document.title in res.content.decode()
@@ -411,14 +384,10 @@ def test_search_view_vote_filter_checkbox(client, stored_version):
 
 def test_votes_page_filters_on_vote_type(client, stored_version):
     document, version = _processed_version(stored_version)
-    Chunk.objects.create(
-        document_version=version,
-        sequence=999,
-        title=document.title,
-        text=f"Med 6 ja-röster mot 2 nej-röster beslutades bifall.\nOmröstningsdetaljer\n{JA_LIST}\n{NEJ_LIST}",
-        page_start=23,
-        page_end=23,
-        processing_version="test",
+    _seed_markdown(
+        document,
+        version,
+        f"Med 6 ja-röster mot 2 nej-röster beslutades bifall.\nOmröstningsdetaljer\n{JA_LIST}\n{NEJ_LIST}",
     )
     pipeline.extract_votes(run=pipeline.begin_run("test"), version_ids=[version.id])
 
@@ -432,7 +401,7 @@ def test_votes_page_filters_on_vote_type(client, stored_version):
 
 def test_member_page_shows_voting_history(client, stored_version):
     document, version = _processed_version(stored_version)
-    _seed_vote_chunks(document, version)
+    _seed_markdown(document, version, f"Omröstningsdetaljer\n{JA_LIST}")
     pipeline.extract_votes(run=pipeline.begin_run("test"), version_ids=[version.id])
 
     res = client.get(reverse("website:member", args=["erik-pelling"]))
@@ -452,7 +421,7 @@ def test_seat_count_sanity_warning(client, stored_version, source_tree):
     body.seat_count = 3
     body.save(update_fields=["seat_count"])
     document, version = _processed_version(stored_version)
-    _seed_vote_chunks(document, version)  # 8 named voters > 3 seats
+    _seed_markdown(document, version, f"Omröstningsdetaljer\n{JA_LIST}\n{NEJ_LIST}")  # 8 named voters > 3 seats
     pipeline.extract_votes(run=pipeline.begin_run("test"), version_ids=[version.id])
 
     res = client.get(reverse("website:document-detail", args=[document.pk]))

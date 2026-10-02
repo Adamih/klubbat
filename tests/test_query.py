@@ -6,7 +6,7 @@ import pytest
 from django.db import connection
 from django.utils import timezone
 
-from core.models import Chunk, Document, DocumentAssociation, DocumentVersion, Meeting
+from core.models import Document, DocumentAssociation, DocumentVersion, Meeting
 from ingestion import pipeline as pl
 from search import service
 from search.query import build_match_query
@@ -37,7 +37,17 @@ def test_diacritics_preserved():
     assert build_match_query("GRÄNBY") == "GRÄNBY"
 
 
-def test_search_groups_by_document_and_respects_filters(stored_version, source_tree):
+def test_snippet_strips_markdown_decoration():
+    from search.service import _highlight
+
+    snippet = "**Protokoll**\n\n# Beslut\n\nKommunfullmäktige ⟦beslutar⟧ att bifalla."
+    html = _highlight(snippet)
+    assert "*" not in html and "#" not in html.split("<mark>")[0].splitlines()[0]
+    assert "Protokoll" in html
+    assert "<mark>beslutar</mark>" in html
+
+
+def test_search_respects_filters(stored_version, source_tree):
     document, version = stored_version
     run = pl.begin_run("test")
     pl.process_versions(run=run, version_ids=[version.id])
@@ -47,7 +57,7 @@ def test_search_groups_by_document_and_respects_filters(stored_version, source_t
     assert data["total"] >= 1
     row = data["results"][0]
     assert row["document_id"] == document.id
-    assert row["page_start"] >= 1
+    assert row["version_id"] == version.id
     assert "<mark>" in row["snippet_html"]
     assert "Spårvägen" in row["snippet_html"] or "Stenhagen" in row["snippet_html"]
 
@@ -59,7 +69,7 @@ def test_search_groups_by_document_and_respects_filters(stored_version, source_t
 
 
 def test_old_versions_are_not_searchable(source_tree, pdf_bytes, settings):
-    """A superseded version's chunks must not surface in default search."""
+    """A superseded version's markdown must not surface in default search."""
     _, _, meeting = source_tree
     document = Document.objects.create(
         title="Ärende med två versioner", doc_type="arende",
@@ -86,12 +96,14 @@ def test_old_versions_are_not_searchable(source_tree, pdf_bytes, settings):
     run = pl.begin_run("test")
     pl.process_versions(run=run, version_ids=[v.id for v in versions.values()])
 
-    # Both versions have chunks, but only the current version's count.
-    all_chunks = Chunk.objects.filter(document_version__document=document).count()
-    current_chunks = versions["new"].chunks.count()
-    assert all_chunks > current_chunks >= 1
-
+    # Both versions are indexed, but only the current version is searchable.
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT COUNT(*) FROM search_documentfts")
+        assert cursor.fetchone()[0] == 2
     data = service.search(build_match_query("Spårvägen"))
-    doc_rows = [r for r in data["results"] if r["document_id"] == document.id]
-    for row in doc_rows:
-        assert row["version_id"] == versions["new"].id
+    for row in data["results"]:
+        if row["document_id"] == document.id:
+            assert row["version_id"] == versions["new"].id
+            break
+    else:
+        pytest.fail("current version not found in search results")

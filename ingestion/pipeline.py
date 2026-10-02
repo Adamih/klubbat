@@ -1,11 +1,18 @@
-"""Ingestion orchestration: discovery, downloading, extraction.
+"""Ingestion orchestration: discovery, downloading, IR extraction, parsing.
 
 Rules enforced here:
-- Downloads, extraction, and OCR never run inside database write transactions.
+- Extraction and OCR never run inside database write transactions.
 - Write transactions are short (one meeting / one version / one document at a time).
 - Re-running on unchanged sources creates nothing new (idempotent).
 - A hash identifies file content, never the logical document.
 - A disappeared link never deletes previously collected material.
+
+Stage A renders each stored PDF into structured markdown with xberg (cached in
+a sidecar keyed on sha256 and stamped with IR_VERSION). Stage C parses votes
+and decisions from the markdown, then stitches cases by diarienummer. Parsed
+rows reference the document version only — page/part-level association is
+deferred; the IR sidecar keeps per-page text so it can be reintroduced later
+without re-paying extraction.
 """
 
 from __future__ import annotations
@@ -17,6 +24,7 @@ import logging
 import os
 import shutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 
 from django.conf import settings
 from django.db import transaction
@@ -27,7 +35,6 @@ from core.models import (
     AgendaItem,
     Authority,
     Body,
-    Chunk,
     Document,
     DocumentAssociation,
     DocumentVersion,
@@ -35,7 +42,7 @@ from core.models import (
     Meeting,
 )
 
-from . import chunking, decisions, extract, votes
+from . import cases, decisions, ir, votes
 from .adapters.base import SourceAdapter
 from .adapters.uppsala import get_adapter_class
 from .fetch import Fetcher, FetchError, looks_like_pdf
@@ -312,39 +319,6 @@ def _label_for(snapshot, url: str) -> str | None:
     return None
 
 
-def _cached_extraction(version: DocumentVersion) -> extract.ExtractionResult | None:
-    """Stage A cache: reuse the sidecar when its extractor version is current.
-
-    Reprocessing (chunker or later-stage bumps) must never re-pay the PDF/OCR
-    cost; a sidecar produced by a different extractor version is stale and the
-    expensive path runs again.
-    """
-    if not version.sha256:
-        return None
-    path = settings.DERIVED_DIR / f"{version.sha256}.extraction.json"
-    if not path.is_file():
-        return None
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    if data.get("extractor_version") != extract.EXTRACTOR_VERSION:
-        return None
-    pages = [
-        extract.PageText(entry["number"], entry["method"], entry["text"])
-        for entry in data.get("pages", [])
-        if isinstance(entry, dict)
-    ]
-    if not pages:
-        return None
-    return extract.ExtractionResult(
-        pages=pages,
-        ocr_used=bool(data.get("ocr_used")),
-        ocr_page_numbers=list(data.get("ocr_page_numbers", [])),
-        ocr_error=data.get("ocr_error", ""),
-    )
-
-
 def process_versions(
     *,
     run: IngestionRun,
@@ -352,42 +326,59 @@ def process_versions(
     document_id: int | None = None,
     statuses: list[str] | None = None,
     limit: int | None = None,
+    force: bool = False,
 ) -> None:
-    """Extract + chunk stored versions; one failure is recorded and does not abort the run."""
+    """Stage A: render stored versions into IR markdown (xberg).
+
+    Selection is by processing status; a version already stamped with the
+    current IR version is skipped unless force=True (or the status was reset
+    to pending). One failure is recorded and does not abort the run.
+    """
     statuses = statuses or [DocumentVersion.Status.PENDING]
     queryset = DocumentVersion.objects.filter(
         processing_status__in=statuses
     ).exclude(stored_path="")
+    if not force:
+        queryset = queryset.filter(
+            Q(ir_version__isnull=True) | ~Q(ir_version=ir.IR_VERSION)
+        )
     if version_ids:
         queryset = queryset.filter(id__in=version_ids)
     if document_id:
         queryset = queryset.filter(document_id=document_id)
-    queryset = queryset.select_related("document").order_by("id")
+    queryset = queryset.order_by("id")
     if limit:
         queryset = queryset[:limit]
 
     for version in queryset:
-        document = version.document
         source_path = settings.ORIGINALS_DIR / version.stored_path
         if not source_path.exists():
             _mark_failed(version, f"stored file missing: {version.stored_path}", run)
             continue
         try:
-            result = _cached_extraction(version)
-            if result is None:
-                result = extract.extract_pdf(source_path, settings.DERIVED_DIR, version.sha256 or "unknown")
+            cached = ir._cached_ir(version)
+            if cached is not None:
+                log.info("Version %s: reusing cached IR %s", version.pk, (version.sha256 or "")[:12])
+                result = cached
             else:
-                log.info("Version %s: reusing cached extraction %s", version.pk, version.sha256[:12])
-            drafts = chunking.build_chunks(result.pages)
-            if drafts:
-                _store_chunks(version, drafts, run, ocr_used=result.ocr_used)
-                if result.ocr_error:
-                    _note_ocr_error(version, result.ocr_error)
-            else:
-                _mark_failed(version, "no text could be extracted (all pages empty or OCR unavailable)", run)
+                result = ir.extract_ir(source_path, settings.DERIVED_DIR, version.sha256 or "unknown")
         except Exception as exc:  # noqa: BLE001 - recorded per version, run continues
             _mark_failed(version, f"{type(exc).__name__}: {exc}", run)
-            log.error("Processing failed for version %s: %s", version.pk, exc)
+            log.error("IR extraction failed for version %s: %s", version.pk, exc)
+            continue
+        with transaction.atomic():
+            version.markdown = result.markdown
+            version.ir_version = ir.IR_VERSION
+            version.ocr_used = result.ocr_used
+            version.processing_status = DocumentVersion.Status.PROCESSED
+            version.processing_error = ""
+            version.extracted_at = timezone.now()
+            version.save(
+                update_fields=[
+                    "markdown", "ir_version", "ocr_used",
+                    "processing_status", "processing_error", "extracted_at",
+                ]
+            )
 
 
 def extract_votes(
@@ -398,12 +389,14 @@ def extract_votes(
     limit: int | None = None,
     force: bool = False,
 ) -> dict:
-    """Stage C: parse recorded votes from chunk text for processed versions.
+    """Stage C: parse recorded votes from IR markdown for processed versions.
 
     Versions stamped with the current vote-parser version are skipped unless
     force=True. One version's failure is recorded and does not abort the run.
     """
-    queryset = DocumentVersion.objects.filter(processing_status=DocumentVersion.Status.PROCESSED)
+    queryset = DocumentVersion.objects.filter(
+        processing_status=DocumentVersion.Status.PROCESSED
+    ).exclude(markdown="")
     if not force:
         queryset = queryset.filter(
             Q(vote_parser_version__isnull=True) | ~Q(vote_parser_version=votes.VOTE_PARSER_VERSION)
@@ -418,19 +411,15 @@ def extract_votes(
 
     stats = {"versions": 0, "votes": 0, "records": 0, "failures": 0}
     for version in queryset:
-        chunks = [
-            {"pk": chunk.pk, "agenda_item": chunk.agenda_item_id, "text": chunk.text}
-            for chunk in version.chunks.order_by("sequence")
-        ]
         try:
-            parsed = votes.parse_version(chunks)
+            parsed = votes.parse_markdown(version.markdown)
         except Exception as exc:  # noqa: BLE001 - recorded per version, run continues
             log.error("Vote extraction failed for version %s: %s", version.pk, exc)
             run.failures += 1
             stats["failures"] += 1
             continue
         with transaction.atomic():
-            created_votes, created_records = votes.store(version, chunks, parsed)
+            created_votes, created_records = votes.store(version, parsed)
             version.vote_parser_version = votes.VOTE_PARSER_VERSION
             version.save(update_fields=["vote_parser_version"])
         stats["versions"] += 1
@@ -449,16 +438,14 @@ def extract_decisions(
     limit: int | None = None,
     force: bool = False,
 ) -> dict:
-    """Stage C: parse agenda-item decision blocks from chunk text.
+    """Stage C: parse agenda-item decision blocks from IR markdown (protocols only).
 
     Mirrors extract_votes: versions stamped with the current decision-parser
     version are skipped unless force=True; one failure never aborts the run.
-    Only protocols are parsed — committee reports (ärende) print the same
-    "§ N … Beslut" structure, but as the board's proposal, not the council's
-    decision, and mixing them would double every agenda item.
     """
     queryset = DocumentVersion.objects.filter(
         processing_status=DocumentVersion.Status.PROCESSED,
+        markdown__gt="",
         document__doc_type=Document.DocType.PROTOCOL,
     )
     if not force:
@@ -475,19 +462,15 @@ def extract_decisions(
 
     stats = {"versions": 0, "decisions": 0, "failures": 0}
     for version in queryset:
-        chunks = [
-            {"pk": chunk.pk, "agenda_item": chunk.agenda_item_id, "text": chunk.text}
-            for chunk in version.chunks.order_by("sequence")
-        ]
         try:
-            parsed = decisions.parse_decisions(chunks)
+            parsed = decisions.parse_markdown(version.markdown)
         except Exception as exc:  # noqa: BLE001 - recorded per version, run continues
             log.error("Decision extraction failed for version %s: %s", version.pk, exc)
             run.failures += 1
             stats["failures"] += 1
             continue
         with transaction.atomic():
-            created = decisions.store(version, chunks, parsed)
+            created = decisions.store(version, parsed)
             version.decision_parser_version = decisions.DECISION_PARSER_VERSION
             version.save(update_fields=["decision_parser_version"])
         stats["versions"] += 1
@@ -497,60 +480,9 @@ def extract_decisions(
     return stats
 
 
-def _primary_items_for(document: Document) -> list[AgendaItem]:
-    association = document.associations.select_related("meeting").order_by("id").first()
-    if association is None:
-        return []
-    return list(association.meeting.agenda_items.all())
-
-
-def _store_chunks(version: DocumentVersion, drafts: list[chunking.ChunkDraft], run: IngestionRun, *, ocr_used: bool) -> None:
-    with transaction.atomic():
-        items = _primary_items_for(version.document)
-        title_base = version.document.title
-        Chunk.objects.filter(document_version=version).delete()
-        objects = []
-        for draft in drafts:
-            item = _resolve_item(items, draft.agenda_number)
-            title = title_base if item is None else f"{title_base} — {item.title}"
-            objects.append(
-                Chunk(
-                    document_version=version,
-                    sequence=draft.sequence,
-                    agenda_item=item,
-                    title=title[:500],
-                    text=draft.text,
-                    page_start=draft.page_start,
-                    page_end=draft.page_end,
-                    processing_version=f"{extract.EXTRACTOR_VERSION}/{chunking.CHUNKER_VERSION}",
-                )
-            )
-        Chunk.objects.bulk_create(objects)
-        version.processing_status = DocumentVersion.Status.PROCESSED
-        version.ocr_used = ocr_used
-        version.processing_error = ""
-        version.extracted_at = timezone.now()
-        version.save(update_fields=["processing_status", "processing_error", "ocr_used", "extracted_at"])
-        run.chunks_created += len(objects)
-        run.save(update_fields=["chunks_created"])
-
-
-def _note_ocr_error(version: DocumentVersion, error: str) -> None:
-    """Version stays processed/partially searchable, but the OCR gap is recorded."""
-    with transaction.atomic():
-        version.processing_error = f"OCR ofullständig: {error}"[:1000]
-        version.save(update_fields=["processing_error"])
-    log.warning("Version %s stored with incomplete OCR: %s", version.pk, error)
-
-
-def _mark_failed(version: DocumentVersion, error: str, run: IngestionRun) -> None:
-    with transaction.atomic():
-        version.processing_status = DocumentVersion.Status.FAILED
-        version.processing_error = error[:1000]
-        version.save(update_fields=["processing_status", "processing_error"])
-        run.failures += 1
-        run.save(update_fields=["failures"])
-    log.error("Version %s failed: %s", version.pk, error)
+def build_cases() -> dict:
+    """Stage C: stitch initiatives end-to-end by diarienummer (see cases.py)."""
+    return cases.build_cases()
 
 
 def retry_failed(run: IngestionRun, *, document_id: int | None = None, process: bool = True) -> dict:
@@ -579,20 +511,30 @@ def retry_failed(run: IngestionRun, *, document_id: int | None = None, process: 
 
 
 def rebuild_search_index() -> dict:
+    """Rebuild the document-level FTS index from stored version markdown."""
     from django.db import connection
 
     with connection.cursor() as cursor:
-        cursor.execute("INSERT INTO search_chunkfts(search_chunkfts) VALUES('rebuild')")
-        cursor.execute("SELECT COUNT(*) FROM search_chunkfts")
+        cursor.execute("DELETE FROM search_documentfts")
+        cursor.execute(
+            """
+            INSERT INTO search_documentfts(rowid, title, text, document_id, version_id)
+            SELECT dv.id, d.title, dv.markdown, d.id, dv.id
+            FROM core_documentversion dv
+            JOIN core_document d ON d.id = dv.document_id
+            WHERE dv.markdown != ''
+            """
+        )
+        cursor.execute("SELECT COUNT(*) FROM search_documentfts")
         fts_rows = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(*) FROM core_chunk")
-        chunk_rows = cursor.fetchone()[0]
-    return {"fts_rows": fts_rows, "chunk_rows": chunk_rows}
+        cursor.execute("SELECT COUNT(*) FROM core_documentversion WHERE markdown != ''")
+        version_rows = cursor.fetchone()[0]
+    return {"fts_rows": fts_rows, "indexed_versions": version_rows}
 
 
 def backup_database(dest_dir: Path, include_originals: bool = False, include_derived: bool = True) -> dict:
     """SQLite online backup (WAL-safe) plus copies of the original documents and
-    the derived extraction cache (sidecars + OCR PDFs: expensive to regenerate)."""
+    the derived extraction cache (IR sidecars: expensive to regenerate)."""
     import sqlite3
 
     dest_dir.mkdir(parents=True, exist_ok=True)

@@ -1,4 +1,4 @@
-"""Pipeline tests: idempotency, versioning, extraction retry, FTS sync."""
+"""Pipeline tests: IR extraction, idempotency, versioning, FTS sync."""
 
 import hashlib
 
@@ -6,50 +6,52 @@ import pytest
 from django.db import connection
 from django.utils import timezone
 
-from core.models import Chunk, Document, DocumentVersion, IngestionRun
-from ingestion import chunking, pipeline
-from ingestion.extract import EXTRACTOR_VERSION, PageText
+from core.models import Document, DocumentVersion, IngestionRun
+from ingestion import pipeline
+from ingestion.ir import IR_VERSION
 from ingestion.management.commands.discover_meetings import _summary
 
 
 pytestmark = pytest.mark.django_db
 
 
-def test_extraction_and_chunking(stored_version, settings):
+def test_extraction_stores_markdown(stored_version):
     document, version = stored_version
     run = pipeline.begin_run("test")
     pipeline.process_versions(run=run, version_ids=[version.id])
     version.refresh_from_db()
     assert version.processing_status == DocumentVersion.Status.PROCESSED
-    chunks = list(version.chunks.order_by("sequence"))
-    assert chunks
-    joined = " ".join(c.text for c in chunks)
-    assert "Spårvägen" in joined  # Swedish diacritics survive extraction
-    for chunk in chunks:
-        assert chunk.page_start >= 1
-        assert chunk.processing_version.startswith("pdfplumber")
+    assert version.markdown.strip()
+    assert version.ir_version == IR_VERSION
+    assert "Spårvägen" in version.markdown  # Swedish diacritics survive extraction
 
 
 def test_process_is_idempotent(stored_version):
     document, version = stored_version
     run = pipeline.begin_run("test")
     pipeline.process_versions(run=run, version_ids=[version.id])
-    first_count = Chunk.objects.filter(document_version=version).count()
-    pipeline.process_versions(run=run, version_ids=[version.id], statuses=["processed"])
-    assert Chunk.objects.filter(document_version=version).count() == first_count
-    assert version.chunks.count() == first_count
+    version.refresh_from_db()
+    first_markdown = version.markdown
+    # Already-stamped versions are skipped entirely.
+    stats_run = pipeline.begin_run("test")
+    pipeline.process_versions(run=stats_run, version_ids=[])
+    pipeline.process_versions(run=stats_run, statuses=[DocumentVersion.Status.PROCESSED])
+    version.refresh_from_db()
+    assert version.markdown == first_markdown
 
 
-def test_reprocess_replaces_chunks(stored_version):
+def test_sidecar_cache_reuses_extraction(stored_version, settings):
     document, version = stored_version
     run = pipeline.begin_run("test")
     pipeline.process_versions(run=run, version_ids=[version.id])
-    before = Chunk.objects.filter(document_version=version).count()
-    # Force reprocessing: chunks must be replaced, not duplicated.
+    # Requeue + force: the sidecar cache must satisfy reprocessing without re-extraction.
     version.processing_status = DocumentVersion.Status.PENDING
     version.save(update_fields=["processing_status"])
-    pipeline.process_versions(run=run, version_ids=[version.id])
-    assert Chunk.objects.filter(document_version=version).count() == before
+    pipeline.process_versions(run=run, version_ids=[version.id], force=True)
+    version.refresh_from_db()
+    assert version.processing_status == DocumentVersion.Status.PROCESSED
+    assert version.markdown.strip()
+    assert (settings.DERIVED_DIR / f"{version.sha256}.ir.json").is_file()
 
 
 def test_fts_stays_in_sync(stored_version):
@@ -57,12 +59,12 @@ def test_fts_stays_in_sync(stored_version):
     run = pipeline.begin_run("test")
     pipeline.process_versions(run=run, version_ids=[version.id])
     with connection.cursor() as cursor:
-        cursor.execute("SELECT COUNT(*) FROM search_chunkfts")
+        cursor.execute("SELECT COUNT(*) FROM search_documentfts")
         fts_rows = cursor.fetchone()[0]
-    assert fts_rows == Chunk.objects.filter(document_version=version).count()
+    assert fts_rows == 1
     pipeline.rebuild_search_index()
     with connection.cursor() as cursor:
-        cursor.execute("SELECT COUNT(*) FROM search_chunkfts")
+        cursor.execute("SELECT COUNT(*) FROM search_documentfts")
         assert cursor.fetchone()[0] == fts_rows
 
 
@@ -107,21 +109,4 @@ def test_run_summary_and_finish():
     run2 = pipeline.begin_run("test-scope")
     pipeline.finish_run(run2)
     assert run2.status == IngestionRun.Status.SUCCESS
-
-
-def test_chunking_pages_and_numbers():
-    pages = [
-        PageText(1, "text", "Rubrik\nFörsta stycket med tillräckligt många tecken för att behållas separat."),
-        PageText(2, "text", "Andra sidan innehåller mer text som också blir en chunk med sidrefer."),
-    ]
-    drafts = chunking.build_chunks(pages)
-    assert drafts
-    assert drafts[0].page_start == 1
-    assert any(d.page_start == 2 for d in drafts)
-    assert [d.sequence for d in drafts] == list(range(1, len(drafts) + 1))
-
-
-def test_chunking_binds_agenda_numbers():
-    pages = [PageText(1, "text", "20. Detaljplan för kollektivtrafik\nBeslut: planen antas enligt förslag.")]
-    drafts = chunking.build_chunks(pages, agenda_numbers={20})
-    assert drafts[0].agenda_number == 20
+    assert "meetings=" in _summary(run2)

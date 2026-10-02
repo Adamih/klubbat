@@ -1,0 +1,54 @@
+{% extends "website/base.html" %}
+{% block title %}{{ case.title|default:case.dnr }} — ärende{% endblock %}
+{% block content %}
+<h1>{{ case.title|default:case.dnr }}</h1>
+<p class="meta">
+    {{ case.get_kind_display }} · dnr <code>{{ case.dnr }}</code>
+</p>
+<p class="meta">Ärendet samlar dokumenten, besluten och röstningarna som hör till samma diarienummer.</p>
+
+<h2>Dokument</h2>
+{% if doc_rows %}
+<ul class="documents">
+    {% for row in doc_rows %}
+    <li>
+        <a href="{% url 'website:document-detail' row.association.document.pk %}">{{ row.association.document.title }}</a>
+        <span class="meta">({{ row.type_label }})</span>
+        {% if row.association.document.current_version and row.association.document.current_version.stored_path %}
+        <a href="{% url 'website:version-file' row.association.document.current_version.pk %}">PDF</a>
+        {% endif %}
+        <a href="{{ row.association.document.primary_source_url }}">Original</a>
+    </li>
+    {% endfor %}
+</ul>
+{% else %}
+<p class="notice">Inga dokument med detta diarienummer är inhämtade.</p>
+{% endif %}
+
+<h2>Beslut</h2>
+{% if decision_rows %}
+{% for row in decision_rows %}
+<div class="decision-entry">
+    <p class="meta">
+        {% if row.meeting %}<a href="{% url 'website:meeting-detail' row.meeting.pk %}">{{ row.meeting.date|date:"Y-m-d" }}</a>{% endif %}
+        {% if row.decision.printed_agenda_number %} · §{{ row.decision.printed_agenda_number }}{% endif %}
+        {% if row.decision.printed_agenda_title %}{{ row.decision.printed_agenda_title|truncatechars:80 }}{% endif %}
+        {% if row.document %} · <a href="{% url 'website:document-detail' row.document.pk %}">{{ row.document.title|truncatechars:60 }}</a>{% endif %}
+    </p>
+    <p class="decision-entry-text">
+        {% if row.decision.outcome != 'annat' %}<span class="vote-type vote-type-{{ row.decision.outcome }}">{{ row.decision.get_outcome_display }}</span>{% endif %}
+        {{ row.decision.decision_text }}
+    </p>
+</div>
+{% endfor %}
+{% else %}
+<p class="notice">Inga beslut för detta diarienummer har utplockats ur protokollen.</p>
+{% endif %}
+
+{% if votes %}
+<h2>Röstningar</h2>
+<section class="votes" data-doc-title="{{ case.title|default:case.dnr }}">
+    {% for item in votes %}{% include "website/_vote_card.html" %}{% endfor %}
+</section>
+{% endif %}
+{% endblock %}

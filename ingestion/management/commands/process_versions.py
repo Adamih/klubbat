@@ -6,7 +6,7 @@ from .discover_meetings import _summary
 
 
 class Command(BaseCommand):
-    help = "Extract and chunk stored document versions (idempotent per version)."
+    help = "Render stored document versions into IR markdown with xberg (idempotent)."
 
     def add_arguments(self, parser):
         parser.add_argument("--limit", type=int, default=None)
@@ -32,6 +32,7 @@ class Command(BaseCommand):
                     document_id=options["document_id"],
                     statuses=[options["status"]],
                     limit=options["limit"],
+                    force=options["status"] == "processed",
                 )
             except Exception as exc:
                 pipeline.finish_run(run, ok=False, error_summary=f"{type(exc).__name__}: {exc}")

@@ -4,7 +4,6 @@
 
 const STORAGE_KEY = "pi-ai-settings";
 const MAX_CHARS = 100000;
-const MAX_VOTE_CHUNK_CHARS = 12000;
 
 function loadSettings() {
     try {
@@ -159,14 +158,8 @@ function initSummaryPage(section) {
             return;
         }
 
-        const chunks = Array.from(section.parentElement.querySelectorAll("details.chunk")).map(
-            (details) => {
-                const label = details.querySelector("summary")?.textContent.trim() || "";
-                const body = details.querySelector("pre")?.textContent || "";
-                return label ? label + "\n" + body : body;
-            }
-        );
-        let text = chunks.join("\n\n");
+        const article = section.parentElement.querySelector("article.doc-text");
+        let text = article ? article.innerText : "";
         let truncation = "";
         if (text.length > MAX_CHARS) {
             text = text.slice(0, MAX_CHARS);
@@ -220,7 +213,7 @@ function initSummaryPage(section) {
     });
 }
 
-function collectVoteContext(card, box) {
+function collectVoteContext(card) {
     const parts = [];
     const votesSection = card ? card.closest(".votes") : null;
     parts.push("Dokument: " + (votesSection?.dataset.docTitle || document.title));
@@ -239,17 +232,6 @@ function collectVoteContext(card, box) {
         }
         for (const el of card.querySelectorAll(".vote-members")) {
             parts.push(el.textContent.trim().replace(/\s+/g, " "));
-        }
-    }
-    const chunkId = box.dataset.chunkId;
-    if (chunkId) {
-        const pre = document.getElementById("chunk-" + chunkId)?.querySelector("pre");
-        if (pre) {
-            let text = pre.textContent.trim().replace(/\s+/g, " ");
-            if (text.length > MAX_VOTE_CHUNK_CHARS) {
-                text = text.slice(0, MAX_VOTE_CHUNK_CHARS) + " …";
-            }
-            parts.push("Protokolltext:\n" + text);
         }
     }
     return parts.join("\n\n");
@@ -281,7 +263,7 @@ function initVoteExplainers() {
                 return;
             }
 
-            const context = collectVoteContext(box.closest(".vote"), box);
+            const context = collectVoteContext(box.closest(".vote"));
             if (context.trim().length < 20) {
                 show("Det finns inget underlag att förklara.", "error");
                 return;

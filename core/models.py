@@ -1,4 +1,9 @@
-"""Authoritative data model: authorities, bodies, meetings, documents, versions, chunks, runs."""
+"""Authoritative data model: authorities, bodies, meetings, documents, versions, runs.
+
+Parsed content (votes, decisions) references the document version only; the
+IR sidecar on disk keeps the structured markdown and per-page text, so page- or
+part-level association can be reintroduced later without re-paying extraction.
+"""
 
 from django.db import models
 from django.db.models import Q
@@ -162,6 +167,12 @@ class DocumentVersion(models.Model):
     processing_error = models.TextField(blank=True)
     ocr_used = models.BooleanField(default=False)
     extracted_at = models.DateTimeField(null=True, blank=True)
+    # Stage A output: the version's rendered markdown (xberg IR). The full
+    # structured IR lives in the derived sidecar; this column is what search
+    # and the document page read.
+    markdown = models.TextField(blank=True)
+    # IR format that produced the markdown (mirrors ingestion.ir.IR_VERSION).
+    ir_version = models.CharField(max_length=100, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     # Latest vote-parser stage (stage C) that produced this version's Vote rows.
     vote_parser_version = models.CharField(max_length=100, null=True, blank=True)
@@ -186,34 +197,12 @@ class DocumentVersion(models.Model):
         return f"v{self.pk} {self.document.title[:60]} ({self.processing_status})"
 
 
-class Chunk(models.Model):
-    """A searchable text chunk of one document version, with page references."""
-
-    document_version = models.ForeignKey(DocumentVersion, on_delete=models.CASCADE, related_name="chunks")
-    sequence = models.IntegerField()
-    agenda_item = models.ForeignKey(AgendaItem, null=True, blank=True, on_delete=models.SET_NULL, related_name="chunks")
-    title = models.CharField(max_length=500)
-    text = models.TextField()
-    page_start = models.IntegerField()
-    page_end = models.IntegerField()
-    processing_version = models.CharField(max_length=100)
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(fields=["document_version", "sequence"], name="uniq_chunk_version_seq"),
-        ]
-        indexes = [models.Index(fields=["document_version", "sequence"])]
-        ordering = ["document_version_id", "sequence"]
-
-    def __str__(self) -> str:
-        return f"chunk {self.pk} seq {self.sequence} p{self.page_start}-{self.page_end}"
-
-
 class Vote(models.Model):
-    """One recorded vote (stage C output), parsed from a version's chunk text.
+    """One recorded vote (stage C output), parsed from a version's markdown.
 
     Only the latest parse is kept: re-extraction deletes and recreates the rows.
-    The chunk/agenda-item references carry the provenance (page, agenda item).
+    Attribution is document-level for now: the printed agenda item is carried
+    as printed metadata, without page or part references.
     """
 
     class Stance(models.TextChoices):
@@ -233,8 +222,6 @@ class Vote(models.Model):
         ANNAT = "annat", "Annat"
 
     document_version = models.ForeignKey(DocumentVersion, on_delete=models.CASCADE, related_name="votes")
-    chunk = models.ForeignKey(Chunk, null=True, blank=True, on_delete=models.SET_NULL, related_name="votes")
-    agenda_item = models.ForeignKey(AgendaItem, null=True, blank=True, on_delete=models.SET_NULL, related_name="votes")
     sequence = models.IntegerField()  # order of the vote within the version
     proposition = models.TextField(blank=True)  # "Rösta Ja för ..., rösta Nej för ..."
     outcome_text = models.TextField(blank=True)  # "Med 39 ja-röster mot 40 nej-röster ..." sentence
@@ -243,7 +230,8 @@ class Vote(models.Model):
         max_length=20, choices=VoteType.choices, default=VoteType.ANNAT
     )
     # Agenda item as printed in the protocol ("Svar på motion om att utreda
-    # ..."), used as the vote's subject when no AgendaItem row matches.
+    # ..."), used as the vote's subject.
+    printed_agenda_number = models.IntegerField(null=True, blank=True)
     agenda_title = models.CharField(max_length=300, blank=True)
     tally_yes = models.IntegerField(null=True, blank=True)
     tally_no = models.IntegerField(null=True, blank=True)
@@ -264,10 +252,54 @@ class Vote(models.Model):
         return f"vote v{self.document_version_id} #{self.sequence}"
 
 
+class Case(models.Model):
+    """An initiative (motion, interpellation, fråga) or committee case, keyed
+    on its diarienummer. The dnr is printed in the initiating document, the
+    committee report, and the protocol's decision heading, so it stitches the
+    whole chain together. Built by the build_cases pass."""
+
+    class Kind(models.TextChoices):
+        MOTION = "motion", "Motion"
+        INTERPELLATION = "interpellation", "Interpellation"
+        FRAGA = "fraga", "Fråga"
+        ARENDE = "arende", "Ärende"
+        ANNAT = "annat", "Annat"
+
+    dnr = models.CharField(max_length=100, unique=True)
+    title = models.CharField(max_length=400, blank=True)
+    kind = models.CharField(max_length=20, choices=Kind.choices, default=Kind.ARENDE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["dnr"]
+
+    def __str__(self) -> str:
+        return f"{self.dnr} {self.title[:60]}"
+
+
+class CaseDocument(models.Model):
+    """A document that belongs to a case: it mentions the case's dnr."""
+
+    case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name="case_documents")
+    document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name="case_links")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["case", "document"], name="uniq_case_document"),
+        ]
+        ordering = ["case_id", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.case_id} <- {self.document_id}"
+
+
 class Decision(models.Model):
     """One recorded decision (stage C output), parsed from a protocol's
     "§ N <title> … Beslut" block. Most decisions are unanimous and never reach
-    a Vote; the printed decision text is the content."""
+    a Vote; the printed decision text is the content. Attribution is
+    document-level for now: the printed agenda item/dnr are carried as printed
+    metadata, without page or part references."""
 
     class Outcome(models.TextChoices):
         BIFALL = "bifall", "Bifall"
@@ -280,8 +312,6 @@ class Decision(models.Model):
         ANNAT = "annat", "Annat"
 
     document_version = models.ForeignKey(DocumentVersion, on_delete=models.CASCADE, related_name="decisions")
-    chunk = models.ForeignKey(Chunk, null=True, blank=True, on_delete=models.SET_NULL, related_name="decisions")
-    agenda_item = models.ForeignKey(AgendaItem, null=True, blank=True, on_delete=models.SET_NULL, related_name="decisions")
     sequence = models.IntegerField()  # order of the decision within the version
     # Agenda item as printed in the protocol heading, used as the subject when
     # no AgendaItem row matches.
@@ -360,7 +390,6 @@ class IngestionRun(models.Model):
     documents_seen = models.IntegerField(default=0)
     documents_created = models.IntegerField(default=0)
     versions_created = models.IntegerField(default=0)
-    chunks_created = models.IntegerField(default=0)
     failures = models.IntegerField(default=0)
 
     class Meta:

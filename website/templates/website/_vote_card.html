@@ -1,10 +1,8 @@
 {% comment %}
 One vote card: summary row + proposition, decision, party chips, members,
-reservations, warnings, source link, and AI explainer. Expects a shaped vote
-row (`item`) from _shape_votes.
-Flags: chunk_local — the protocol chunk is rendered on this page, so the
-source link can use a plain #chunk anchor (document detail). hide_agenda —
-skip the agenda line (agenda item page: the title is already the heading).
+reservations, warnings, and AI explainer. Expects a shaped vote row (`item`)
+from _shape_votes. hide_agenda — skip the agenda line (agenda item page: the
+title is already the heading).
 {% endcomment %}
 <details class="vote" id="vote-{{ item.vote.pk }}">
     <summary>
@@ -16,7 +14,7 @@ skip the agenda line (agenda item page: the title is already the heading).
     <div class="vote-body">
         {% if item.agenda and not hide_agenda %}
         <p class="vote-agenda">
-            {% if item.agenda.number is not None %}§{{ item.agenda.number }} · {% endif %}{% if item.vote.agenda_item %}<a href="{% url 'website:agenda-item' item.vote.agenda_item.pk %}">{{ item.agenda.title }}</a>{% else %}{{ item.agenda.title }}{% endif %}
+            {% if item.agenda.number is not None %}§{{ item.agenda.number }} · {% endif %}{{ item.agenda.title }}
         </p>
         {% endif %}
         {% if item.vote.proposition %}<p class="vote-proposition"><strong>Omröstningsproposition:</strong> {{ item.vote.proposition }}</p>{% endif %}
@@ -57,16 +55,7 @@ skip the agenda line (agenda item page: the title is already the heading).
         </div>
         {% endif %}
         {% for warning in item.sanity %}<p class="notice">OBS: {{ warning }}</p>{% endfor %}
-        {% if item.vote.chunk_id %}
-        <p class="vote-source">
-            {% if chunk_local %}
-            <a href="#chunk-{{ item.vote.chunk_id }}">Visa i text (s. {{ item.vote.chunk.page_start }})</a>
-            {% else %}
-            <a href="{% url 'website:document-detail' item.vote.document_version.document_id %}#chunk-{{ item.vote.chunk_id }}">Visa i text (s. {{ item.vote.chunk.page_start }})</a>
-            {% endif %}
-        </p>
-        {% endif %}
-        <div class="ai-vote" data-chunk-id="{{ item.vote.chunk_id|default_if_none:'' }}">
+        <div class="ai-vote">
             <button type="button" class="ai-vote-button">Förklara röstningen</button>
             <p class="ai-status" hidden></p>
             <div class="ai-output" hidden></div>

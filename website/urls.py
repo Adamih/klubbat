@@ -11,6 +11,7 @@ urlpatterns = [
     path("rostningar/", views.votes_view, name="votes"),
     path("beslut/", views.decisions_view, name="decisions"),
     path("arende/<int:pk>/", views.agenda_item_view, name="agenda-item"),
+    path("arenden/<str:dnr>/", views.case_view, name="case"),
     path("ledamot/<str:slug>/", views.member_view, name="member"),
     path("parti/<str:code>/", views.party_view, name="party"),
     path("dokument/<int:pk>/", views.document_detail_view, name="document-detail"),

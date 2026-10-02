@@ -5,6 +5,7 @@ import math
 from collections import Counter, defaultdict
 from pathlib import Path
 
+import mistune
 from django.conf import settings
 from django.db.models import Count, Exists, Max, Min, OuterRef, Q
 from django.http import FileResponse, Http404
@@ -15,7 +16,7 @@ from core.models import (
     AgendaItem,
     Authority,
     Body,
-    Chunk,
+    Case,
     Decision,
     Document,
     DocumentAssociation,
@@ -25,6 +26,7 @@ from core.models import (
     Vote,
     VoteRecord,
 )
+from core.dnrs import clean_title, normalize_dnr
 from core.parties import party_css_class, party_label
 from search import service
 from search.query import build_match_query
@@ -34,6 +36,8 @@ _TYPE_LABELS = dict(Document.DocType.choices)
 _STANCE_ORDER = ("ja", "nej", "avstar", "franvarande")
 _STANCE_LABELS = dict(Vote.Stance.choices)
 _STANCE_PART_LABELS = {"ja": "ja", "nej": "nej", "avstar": "avstår", "franvarande": "frånvarande"}
+
+_markdown = mistune.create_markdown(plugins=["table", "strikethrough", "footnotes"])
 
 
 def _shape_votes(votes, seat_count=None):
@@ -99,8 +103,8 @@ def _shape_votes(votes, seat_count=None):
                 if named:
                     tally_parts.append(f"{named} {dict(Vote.Stance.choices)[stance].lower()}")
 
-        agenda_title = vote.agenda_item.title if vote.agenda_item else vote.agenda_title
-        agenda_number = vote.agenda_item.agenda_number if vote.agenda_item else None
+        agenda_title = vote.agenda_title
+        agenda_number = vote.printed_agenda_number
         margin = (
             abs(vote.tally_yes - vote.tally_no)
             if vote.tally_yes is not None and vote.tally_no is not None
@@ -149,7 +153,7 @@ def _shape_votes(votes, seat_count=None):
                 ),
                 "decision": vote.decision_text,
                 "margin": margin,
-                "label": agenda_title or vote.proposition or (vote.chunk.title if vote.chunk else "Röstning"),
+                "label": agenda_title or vote.proposition or "Röstning",
                 "tally_text": " · ".join(tally_parts),
                 "parties": parties,
                 "strip": strip,
@@ -344,8 +348,8 @@ def meeting_detail_view(request, pk):
                 votes_by_document.get(association.document_id, [])
             )
 
-    # Parsed decisions mapped onto agenda items: via the resolved agenda item
-    # FK, or the printed § number when resolution did not match.
+    # Parsed decisions mapped onto agenda items via the printed § number
+    # (document-level attribution: no decision FK).
     number_to_item = {item.agenda_number: item.pk for item in agenda_items if item.agenda_number is not None}
     decision_by_item: dict[int, Decision] = {}
     if current_version_ids:
@@ -354,7 +358,7 @@ def meeting_detail_view(request, pk):
             .select_related("document_version__document")
             .order_by("sequence")
         ):
-            target = decision.agenda_item_id or number_to_item.get(decision.printed_agenda_number)
+            target = number_to_item.get(decision.printed_agenda_number)
             if target:
                 decision_by_item.setdefault(target, decision)
 
@@ -394,7 +398,7 @@ def votes_view(request):
     year = _int_param(request, "ar")
 
     votes = (
-        base_votes.select_related("document_version__document", "agenda_item", "chunk")
+        base_votes.select_related("document_version__document")
         .prefetch_related("records", "reservations", "document_version__document__associations__meeting")
         .annotate(meeting_date=Min("document_version__document__associations__meeting__date"))
         .order_by("-meeting_date", "document_version_id", "sequence")
@@ -466,7 +470,7 @@ def member_view(request, slug):
     votes = (
         Vote.objects.filter(records__member_name__in=variants, document_version_id__in=current_ids)
         .annotate(meeting_date=Min("document_version__document__associations__meeting__date"))
-        .select_related("document_version__document", "agenda_item", "chunk")
+        .select_related("document_version__document")
         .prefetch_related("reservations")
         .order_by("-meeting_date", "document_version_id", "sequence")
     )
@@ -481,13 +485,12 @@ def member_view(request, slug):
             continue
         stance_counts[record.stance] = stance_counts.get(record.stance, 0) + 1
         party_codes[record.party_code] = party_codes.get(record.party_code, 0) + 1
-        agenda_title = vote.agenda_item.title if vote.agenda_item else vote.agenda_title
         rows.append(
             {
                 "vote": vote,
                 "record": record,
                 "document": vote.document_version.document,
-                "subject": agenda_title or vote.proposition or "Röstning",
+                "subject": vote.agenda_title or vote.proposition or "Röstning",
             }
         )
     party_options = sorted(party_codes, key=party_codes.get, reverse=True)
@@ -567,7 +570,7 @@ def decisions_view(request):
     year = _int_param(request, "ar")
 
     decisions = (
-        base.select_related("agenda_item", "chunk", "document_version__document")
+        base.select_related("document_version__document")
         .annotate(meeting_date=Min("document_version__document__associations__meeting__date"))
         .order_by("-meeting_date", "document_version_id", "sequence")
     )
@@ -576,11 +579,13 @@ def decisions_view(request):
     if year:
         decisions = decisions.filter(meeting_date__year=year)
 
-    votes_by_item: dict[int, list[Vote]] = defaultdict(list)
-    for vote in Vote.objects.filter(document_version_id__in=current_ids):
-        if vote.agenda_item_id:
-            votes_by_item[vote.agenda_item_id].append(vote)
+    # Votes are matched to decisions within the same protocol version by the
+    # printed agenda number (document-level attribution: no FK).
+    votes_by_key: dict[tuple[int, int], list[Vote]] = defaultdict(list)
+    for vote in Vote.objects.filter(document_version_id__in=current_ids, printed_agenda_number__isnull=False):
+        votes_by_key[(vote.document_version_id, vote.printed_agenda_number)].append(vote)
 
+    cases = _cases_by_dnr(decision.printed_dnr for decision in decisions)
     rows = []
     for decision in decisions:
         document = decision.document_version.document
@@ -590,8 +595,9 @@ def decisions_view(request):
                 "decision": decision,
                 "document": document,
                 "meeting": association.meeting if association else None,
-                "subject": decision.agenda_item.title if decision.agenda_item else decision.printed_agenda_title,
-                "votes": votes_by_item.get(decision.agenda_item_id, []) if decision.agenda_item_id else [],
+                "subject": decision.printed_agenda_title,
+                "votes": votes_by_key.get((decision.document_version_id, decision.printed_agenda_number), []),
+                "case": cases.get(normalize_dnr(decision.printed_dnr)),
             }
         )
 
@@ -609,6 +615,96 @@ def decisions_view(request):
     )
 
 
+def _cases_by_dnr(dnrs):
+    """Map normalized dnr -> Case for the given raw dnr strings."""
+    wanted = {normalize_dnr(dnr) for dnr in dnrs if dnr}
+    if not wanted:
+        return {}
+    return {normalize_dnr(case.dnr): case for case in Case.objects.filter(dnr__in=wanted)}
+
+
+def _doc_type_label(doc):
+    return _TYPE_LABELS.get(doc.doc_type, doc.doc_type)
+
+
+def case_view(request, dnr):
+    """One initiative end-to-end: its documents, decisions, and votes by dnr."""
+    dnr = normalize_dnr(dnr)
+    case = get_object_or_404(Case, dnr=dnr)
+    current_protocol_ids = list(
+        Document.objects.filter(doc_type="protokoll")
+        .exclude(current_version=None)
+        .values_list("current_version_id", flat=True)
+    )
+    decisions = sorted(
+        (
+            decision
+            for decision in Decision.objects.filter(document_version_id__in=current_protocol_ids)
+            .exclude(printed_dnr="")
+            .select_related("document_version__document")
+            .annotate(meeting_date=Min("document_version__document__associations__meeting__date"))
+            if normalize_dnr(decision.printed_dnr) == dnr
+        ),
+        key=lambda decision: (decision.meeting_date or datetime.date.min, decision.sequence),
+    )
+
+    # Votes matched to decisions by printed agenda number within the same
+    # protocol version (document-level attribution: no FK).
+    votes_by_key: dict[tuple[int, int], list[Vote]] = defaultdict(list)
+    protocol_votes = (
+        Vote.objects.filter(document_version_id__in=current_protocol_ids, printed_agenda_number__isnull=False)
+        .select_related("document_version__document")
+        .prefetch_related("records", "reservations")
+        .order_by("document_version_id", "sequence")
+    )
+    for vote in protocol_votes:
+        votes_by_key[(vote.document_version_id, vote.printed_agenda_number)].append(vote)
+
+    decision_rows = []
+    for decision in decisions:
+        decision_rows.append(
+            {
+                "decision": decision,
+                "document": decision.document_version.document,
+                "meeting": (
+                    decision.document_version.document.associations.select_related("meeting").first().meeting
+                    if decision.document_version.document.associations.exists()
+                    else None
+                ),
+                "votes": votes_by_key.get((decision.document_version_id, decision.printed_agenda_number), []),
+            }
+        )
+
+    doc_rows = [
+        {
+            "association": link,
+            "type_label": _doc_type_label(link.document),
+        }
+        for link in case.case_documents.select_related(
+            "document", "document__current_version"
+        ).order_by("document__doc_type", "document__title")
+    ]
+
+    seen_votes: set[int] = set()
+    flat_votes = []
+    for row in decision_rows:
+        for vote in row["votes"]:
+            if vote.pk not in seen_votes:
+                seen_votes.add(vote.pk)
+                flat_votes.append(vote)
+
+    return render(
+        request,
+        "website/case.html",
+        {
+            "case": case,
+            "doc_rows": doc_rows,
+            "decision_rows": decision_rows,
+            "votes": _shape_votes(flat_votes),
+        },
+    )
+
+
 def agenda_item_view(request, pk):
     """One agenda item: its decision, recorded votes, and attached documents."""
     item = get_object_or_404(
@@ -621,19 +717,23 @@ def agenda_item_view(request, pk):
             "document__current_version_id", flat=True
         )
     )
-    decision_filter = Q(agenda_item=item)
+    # Decisions match by printed § number only (document-level attribution).
+    decisions = []
     if item.agenda_number is not None:
-        decision_filter |= Q(printed_agenda_number=item.agenda_number)
-    decisions = list(
-        Decision.objects.filter(document_version_id__in=current_ids)
-        .filter(decision_filter)
-        .select_related("chunk", "document_version__document")
-        .order_by("document_version_id", "sequence")
-    )
+        decisions = list(
+            Decision.objects.filter(document_version_id__in=current_ids, printed_agenda_number=item.agenda_number)
+            .select_related("document_version__document")
+            .order_by("document_version_id", "sequence")
+        )
 
+    # Votes of the meeting's documents bound to this agenda item; votes carry
+    # no agenda-item FK, so binding follows each document's association.
+    bound_doc_ids = list(
+        DocumentAssociation.objects.filter(agenda_item=item).values_list("document_id", flat=True)
+    )
     votes = (
-        Vote.objects.filter(document_version_id__in=current_ids, agenda_item=item)
-        .select_related("chunk", "agenda_item")
+        Vote.objects.filter(document_version__document_id__in=bound_doc_ids, document_version_id__in=current_ids)
+        .select_related("document_version__document")
         .prefetch_related("records", "reservations")
         .order_by("document_version_id", "sequence")
     )
@@ -645,9 +745,18 @@ def agenda_item_view(request, pk):
     document_rows = [
         {
             "association": association,
-            "type_label": _TYPE_LABELS.get(association.document.doc_type, association.document.doc_type),
+            "type_label": _doc_type_label(association.document),
         }
         for association in documents
+    ]
+    cases = _cases_by_dnr(decision.printed_dnr for decision in decisions)
+    decision_rows = [
+        {
+            "decision": decision,
+            "document": decision.document_version.document,
+            "case": cases.get(normalize_dnr(decision.printed_dnr)),
+        }
+        for decision in decisions
     ]
 
     return render(
@@ -656,7 +765,7 @@ def agenda_item_view(request, pk):
         {
             "item": item,
             "meeting": meeting,
-            "decisions": decisions,
+            "decision_rows": decision_rows,
             "votes": shaped_votes,
             "document_rows": document_rows,
         },
@@ -671,7 +780,7 @@ def party_view(request, code):
     )
     records = list(
         VoteRecord.objects.filter(party_code=code, vote__document_version_id__in=current_ids)
-        .select_related("vote", "vote__document_version__document", "vote__agenda_item")
+        .select_related("vote", "vote__document_version__document")
     )
     if not records:
         raise Http404("Ingen röstning registrerad för partiet.")
@@ -712,7 +821,7 @@ def party_view(request, code):
     votes = (
         Vote.objects.filter(pk__in=vote_ids)
         .annotate(meeting_date=Min("document_version__document__associations__meeting__date"))
-        .select_related("document_version__document", "agenda_item")
+        .select_related("document_version__document")
         .order_by("-meeting_date", "document_version_id", "sequence")
     )
     rows = []
@@ -723,12 +832,11 @@ def party_view(request, code):
             for stance in _STANCE_ORDER
             if positions.get(stance)
         ]
-        agenda_title = vote.agenda_item.title if vote.agenda_item else vote.agenda_title
         rows.append(
             {
                 "vote": vote,
                 "document": vote.document_version.document,
-                "subject": agenda_title or vote.proposition or "Röstning",
+                "subject": vote.agenda_title or vote.proposition or "Röstning",
                 "position": " · ".join(parts),
             }
         )
@@ -764,16 +872,20 @@ def document_detail_view(request, pk):
     )
     versions = document.versions.order_by("-retrieved_at", "-id")
     current = document.current_version
-    chunks = (
-        current.chunks.order_by("sequence")
-        if current is not None and current.processing_status == DocumentVersion.Status.PROCESSED
-        else []
+    has_text = (
+        current is not None
+        and current.processing_status == DocumentVersion.Status.PROCESSED
+        and bool(current.markdown)
     )
+    markdown_html = _markdown(current.markdown) if has_text else ""
     associations = document.associations.select_related(
         "meeting", "meeting__body", "meeting__body__authority", "agenda_item"
     )
+    cases = list(
+        Case.objects.filter(case_documents__document=document).order_by("dnr")
+    )
     votes = []
-    if current is not None and current.processing_status == DocumentVersion.Status.PROCESSED:
+    if has_text:
         seat_count = next(
             (
                 association.meeting.body.seat_count
@@ -785,7 +897,6 @@ def document_detail_view(request, pk):
         votes = _shape_votes(
             Vote.objects.filter(document_version=current)
             .prefetch_related("records", "reservations")
-            .select_related("chunk", "agenda_item")
             .order_by("sequence"),
             seat_count=seat_count,
         )
@@ -796,21 +907,22 @@ def document_detail_view(request, pk):
             "document": document,
             "versions": versions,
             "current_version": current,
-            "chunks": chunks,
+            "markdown_html": markdown_html,
             "associations": associations,
             "votes": votes,
-            "doc_type_label": _TYPE_LABELS.get(document.doc_type, document.doc_type),
+            "cases": cases,
+            "doc_type_label": _doc_type_label(document),
         },
     )
 
 
 def version_detail_view(request, version_pk):
     version = get_object_or_404(DocumentVersion.objects.select_related("document"), pk=version_pk)
-    chunks = version.chunks.order_by("sequence")
+    markdown_html = _markdown(version.markdown) if version.markdown else ""
     return render(
         request,
         "website/version_detail.html",
-        {"version": version, "chunks": chunks, "document": version.document},
+        {"version": version, "markdown_html": markdown_html, "document": version.document},
     )
 
 
@@ -845,7 +957,7 @@ def status_view(request):
         "coverage": coverage,
         "meeting_count": Meeting.objects.count(),
         "document_count": Document.objects.count(),
-        "chunk_count": Chunk.objects.count(),
+        "indexed_version_count": DocumentVersion.objects.exclude(markdown="").count(),
         "fts_rows": service.fts_row_count(),
         "version_counts": version_counts,
         "ocr_count": DocumentVersion.objects.filter(ocr_used=True).count(),

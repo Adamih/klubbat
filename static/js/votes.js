@@ -1,5 +1,5 @@
-/* Röstningar: öppna det <details>-element (textchunk eller röstning) som en
- * länk med fragment (#chunk-* / #vote-*) pekar på. */
+/* Röstningar: öppna det <details>-element (röstningskort) som en länk med
+ * fragment (#vote-*) pekar på, t.ex. från beslutssidan. */
 function openTargetDetails() {
     if (!location.hash) return;
     const el = document.getElementById(location.hash.slice(1));

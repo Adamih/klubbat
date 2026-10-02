@@ -101,22 +101,9 @@ MAX_DOWNLOAD_BYTES = 300 * 1024 * 1024
 BACKFILL_YEAR = int(os.environ.get("BACKFILL_YEAR", "2025"))
 RECENT_WINDOW_DAYS = int(os.environ.get("RECENT_WINDOW_DAYS", "60"))
 
-# --- OCR toolchain (verified on this machine) ---
+# --- OCR toolchain (tesseract, used by xberg for scanned pages) ---
 TESSDATA_PREFIX = str(BASE_DIR / "tessdata")
 TESSERACT_DIR = os.environ.get("TESSERACT_DIR", r"C:\Program Files\Tesseract-OCR")
-
-
-def _find_ghostscript_dir() -> str:
-    override = os.environ.get("GHOSTSCRIPT_DIR")
-    if override:
-        return override
-    import glob
-
-    candidates = sorted(glob.glob(r"C:\Program Files\gs\gs*\bin"))
-    return candidates[-1] if candidates else ""
-
-
-GHOSTSCRIPT_DIR = _find_ghostscript_dir()
 
 # --- Logging: console INFO, rotating file DEBUG ---
 LOG_DIR.mkdir(parents=True, exist_ok=True)

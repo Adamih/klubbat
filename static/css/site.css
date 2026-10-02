@@ -108,12 +108,13 @@ table.versions th, table.versions td, table.status-table th, table.status-table 
 }
 table.versions th, table.status-table th { background: #eee9df; }
 
-details.chunk { margin: 0.6rem 0; background: #fff; border: 1px solid var(--line); border-radius: 4px; }
-details.chunk summary { cursor: pointer; padding: 0.5rem 0.75rem; font-weight: 600; }
-details.chunk pre {
-    margin: 0; padding: 0.75rem; white-space: pre-wrap; overflow-wrap: anywhere;
-    font-family: inherit; font-size: 0.9rem; border-top: 1px solid var(--line);
-}
+article.doc-text { margin: 0.6rem 0; background: #fff; border: 1px solid var(--line); border-radius: 4px; padding: 0.75rem 1rem; }
+article.doc-text h1, article.doc-text h2, article.doc-text h3 { margin: 0.9rem 0 0.4rem; font-size: 1rem; }
+article.doc-text h1 { font-size: 1.1rem; }
+article.doc-text p { margin: 0.5rem 0; overflow-wrap: anywhere; }
+article.doc-text table { border-collapse: collapse; margin: 0.6rem 0; font-size: 0.85rem; }
+article.doc-text th, article.doc-text td { border: 1px solid var(--line); padding: 0.25rem 0.5rem; text-align: left; }
+article.doc-text li { margin: 0.25rem 0; }
 
 .votes details.vote { margin: 0.6rem 0; background: #fff; border: 1px solid var(--line); border-radius: 4px; }
 .votes details.vote summary {
@@ -179,7 +180,6 @@ table.vote-parties td:first-child { text-align: left; }
 .vote-members { font-size: 0.9rem; color: #444; overflow-wrap: anywhere; }
 .vote-members a { color: #444; text-decoration: none; border-bottom: 1px dotted #999; }
 .vote-members a:hover { color: var(--accent); border-bottom-color: var(--accent); }
-.vote-source a { color: var(--accent); font-size: 0.9rem; }
 
 .ai-vote { margin-top: 0.6rem; }
 .ai-vote button, .ai-actions button.secondary, .ai-summary button {

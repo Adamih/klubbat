@@ -38,7 +38,7 @@
         <p class="meta">
             {% if row.meeting %}<a href="{% url 'website:meeting-detail' row.meeting.pk %}">{{ row.meeting.date|date:"Y-m-d" }}</a>{% endif %}
             {% if row.decision.printed_agenda_number %} · §{{ row.decision.printed_agenda_number }}{% endif %}
-            {% if row.decision.printed_dnr %} · dnr {{ row.decision.printed_dnr }}{% endif %}
+            {% if row.decision.printed_dnr %} · {% if row.case %}<a href="{% url 'website:case' row.case.dnr %}" title="{{ row.case.title|default:row.case.dnr }}">dnr {{ row.decision.printed_dnr }}</a>{% else %}dnr {{ row.decision.printed_dnr }}{% endif %}{% endif %}
         </p>
         {% if row.decision.agenda_item %}
         <a class="doc-link" href="{% url 'website:agenda-item' row.decision.agenda_item.pk %}">{{ row.subject|truncatechars:100 }}</a>
@@ -51,7 +51,7 @@
            {% if vote.tally_yes is not None %}title="Röstantal: {{ vote.tally_yes }} ja, {{ vote.tally_no }} nej"{% endif %}>Omröstning</a>
         {% endfor %}
         <p class="decision-text">{{ row.decision.decision_text|truncatechars:280 }}</p>
-        <p class="meta"><a href="{% url 'website:document-detail' row.document.pk %}#chunk-{{ row.decision.chunk_id|default_if_none:'' }}">{{ row.document.title }}</a></p>
+        <p class="meta"><a href="{% url 'website:document-detail' row.document.pk %}">{{ row.document.title }}</a></p>
     </li>
     {% empty %}
     <li class="notice">Inga beslut matchar filtret.</li>

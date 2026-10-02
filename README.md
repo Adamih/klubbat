@@ -6,10 +6,11 @@ upptäckt av nya dokument. All data är allmänna handlingar från uppsala.se.
 
 ## Kom igång (Windows, Git Bash)
 
-Krav: [uv](https://docs.astral.sh/uv/), Tesseract-OCR (UB-Mannheim-build) och
-Ghostscript installerade. Svenska språkdata ligger projektlokalt i `tessdata/`
-(tillsammans med `eng`/`osd` och Tesseracts `configs/`), och pekas ut via
-`TESSDATA_PREFIX` av koden — inget behöver installeras i Program Files.
+Krav: [uv](https://docs.astral.sh/uv/) och Tesseract-OCR (UB-Mannheim-build)
+installerade (används av xberg för OCR av scanade sidor). Svenska språkdata
+ligger projektlokalt i `tessdata/` (tillsammans med `eng`/`osd` och Tesseracts
+`configs/`), och pekas ut via `TESSDATA_PREFIX` av koden — inget behöver
+installeras i Program Files.
 
 ```bash
 uv sync                                    # installera beroenden
@@ -26,14 +27,15 @@ Skapa en adminanvändare för /admin/: `uv run python manage.py createsuperuser`
 | Kommando | Funktion |
 |---|---|
 | `discover_meetings --year YYYY` (eller `--start/--end`) | Upptäck möten + dokument i ett intervall, ladda ner nya PDF:er. Idempotent. |
-| `backfill --year YYYY` | Komplett år: discovery + nedladdning + extraktion. `--limit-meetings N` för provkörning. |
-| `ingest_recent --days 60` | Återbesök senaste periodens möten, hämta om dokument (senutgåvor/korrigeringar), extrahera. |
-| `process_versions --status pending` | Extrahera + chunka sparade versioner. `--document-id`/`--version-id` för riktnade körningar. Återanvänder cachead extraktionstext ur `data/derived/` när extractor-versionen stämmer (OCR-kostnaden betalas bara en gång). |
-| `extract_votes [--force]` | Parsa röstningar (parti- och namngrupperade) ur extraherad text. Idempotent; hoppar över versioner med aktuell parser-version. |
-| `extract_decisions [--force]` | Parsa beslutblock ("§ N … Beslut") per ärende ur protokollens text. Idempotent, protokoll endast. |
+| `backfill --year YYYY` | Komplett år: discovery + nedladdning + IR-extraktion + röstningar/beslut/ärenden. `--limit-meetings N` för provkörning. |
+| `ingest_recent --days 60` | Återbesök senaste periodens möten, hämta om dokument (senutgåvor/korrigeringar), extrahera + parsa allt. |
+| `process_versions --status pending` | Rendera sparade versioner till IR-markdown med xberg. `--document-id`/`--version-id` för riktnade körningar; `--status processed` tvingar omextraktion (sidocachen i `data/derived/` gör omkörningen billig så länge IR-versionen är oförändrad). |
+| `extract_votes [--force]` | Parsa röstningar ur IR-markdown. Idempotent; hoppar över versioner med aktuell parser-version. |
+| `extract_decisions [--force]` | Parsa beslutblock ("§ N … Beslut") ur IR-markdown. Idempotent, protokoll endast. |
+| `build_cases` | Bygg ärendesidor: länka dokument till ärenden via diarienummer och para interpellationer/frågor via titlar. Idempotent; bygger om alla länkar. Körs automatiskt i `backfill`/`ingest_recent`. |
 | `retry_failed` | Ladda om misslyckade nedladdningar, köa om misslyckad extraktion. |
-| `rebuild_search_index` | Bygg om FTS5-index från sparade chunks. |
-| `backup_database [--originals] [--no-derived]` | SQLite-onlinebackup (WAL-säkert) till `backups/`, inklusive `data/derived/` (extraktionscachen: sidecars + OCR-PDF:er). |
+| `rebuild_search_index` | Bygg om FTS5-index från versionernas markdown. |
+| `backup_database [--originals] [--no-derived]` | SQLite-onlinebackup (WAL-säkert) till `backups/`, inklusive `data/derived/` (IR-cachen: markdown + per-sidig text). |
 
 Alla ingestionkommandon tar ett lås (`data/ingestion.lock`); överlappande
 körningar avvisas, och en låst process med död PID bryts automatiskt.
@@ -74,14 +76,14 @@ dyra att återskapa) kopieras som standard till `backups/derived-<tidsstämpel>/
 
 | Del | Plats |
 |---|---|
-| Datamodell (authoritativ) | `core/models.py` — Authority, Body, Meeting, AgendaItem, Document, DocumentAssociation, DocumentVersion, Chunk, IngestionRun |
+| Datamodell (authoritativ) | `core/models.py` — Authority, Body, Meeting, AgendaItem, Document, DocumentAssociation, DocumentVersion (med IR-markdown), Vote, Decision, Case, IngestionRun |
 | Källadapter (Uppsala) | `ingestion/adapters/uppsala.py` — selectors/URL-regler endast här |
 | Fetch/HTTP | `ingestion/fetch.py` — timeouts, begränsade retries, PDF-validering |
-| Extraktion + OCR | `ingestion/extract.py` — pdfplumber, sidvis OCR-fallback via OCRmyPDF (swe), sidecar-JSON |
-| Chunkning | `ingestion/chunking.py` — styckebaserad, sidreferenser, konservativ rubrikdetektering |
+| IR-extraktion | `ingestion/ir.py` — xberg renderar PDF till strukturerad markdown (rubrikträd, tabeller, sidtext), OCR via tesseract (swe), sidecar-JSON i `data/derived/` |
 | Pipeline | `ingestion/pipeline.py` — orkestrering, korta transaktioner, locking, versionering |
-| Sök | `search/` — FTS5 (unicode61, diakriter bevarade), BM25 med titelvikt, gruppering per dokument, escapade snippet-markeringar |
-| Webb | `website/` — serverrenderade mallar + HTMX; Sök, Möten, Mötesdetalj, Dokumentdetalj, Versioner, Status |
+| Parsning (stage C) | `ingestion/votes.py` + `ingestion/decisions.py` — grammatik över plattad markdown; `ingestion/cases.py` — ärendestygning via diarienummer |
+| Sök | `search/` — FTS5 per dokumentversion (unicode61, diakriter bevarade), BM25 med titelvikt, escapade snippet-markeringar |
+| Webb | `website/` — serverrenderade mallar + HTMX; Sök, Möten, Mötesdetalj, Dokumentdetalj (markdown), Versioner, Status |
 | AI (BYO-modell) | `static/js/ai.js` + Inställningar-sidan — sammanfattning direkt från webbläsaren |
 | Admin | `core/admin.py` — inspektion, metadata, retry-åtgärder |
 
@@ -108,6 +110,8 @@ Completions-API (t.ex. OpenRouter: bas-URL `https://openrouter.ai/api/v1`).
   raderar aldrig insamlat material.
 - Ärendenummer, protokollparagrafnummer och diarienummer är separata fält.
   Okänd metadata förblir okänd — inget härleds.
+- Parsad data (röstningar, beslut) refererar bara dokumentversionen just nu;
+  sid-/partsreferenser återkommer senare ur IR-sidocachen.
 
 ### Kända begränsningar (MVP)
 
@@ -115,6 +119,7 @@ Completions-API (t.ex. OpenRouter: bas-URL `https://openrouter.ai/api/v1`).
 - Äldre arkiv (2003–2010, aldrehandlingar.uppsala.se) ingår inte.
 - Svensk stemning/stavningsfel-tolerans/semantisk sökning är medvetet
   bortlåst tills sökkvalitet motiverar det.
-- Stora "född digitala" taggade PDF:er kan i undantag få ofullständig OCR av
-  bilagor; dokumentet indexeras ändå med sin text, och luckan noteras i
-  versionsstatus (syns i admin och på dokumentsidan).
+- Sidreferenser per sökträff och per röstning är avstängda (dokumentnivå
+  gäller); IR-sidocachen sparar sidtexterna så kopplingen kan återinföras.
+- Statistiktabeller i stora bilagor: xberg återger tabellytan läsbart men
+  cellmängden är inte utförlig på de värsta dokumenten.

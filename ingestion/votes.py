@@ -1,23 +1,23 @@
-"""Vote extraction (stage C): recorded votes parsed from chunk text.
+"""Vote extraction (stage C): recorded votes parsed from a version's IR markdown.
 
-Stage B (chunking) output is the only input — no PDF or OCR access, so a
-re-run is a fast text pass. Parsing is driven by the protocol's own printed
-structure: an "Omröstningsdetaljer" block of labeled name lists, plus optional
-tally/proposition sentences elsewhere in the text. Results are stamped with
-VOTE_PARSER_VERSION per document version; re-extraction deletes and recreates
-the rows (latest state only, no history).
+The markdown (stage A output, cached per sha256) is flattened to plain text and
+parsed by the protocol's own printed structure: an "Omröstningsdetaljer" block
+of labeled name lists, plus optional tally/proposition sentences elsewhere in
+the text. Results are stamped with VOTE_PARSER_VERSION per document version;
+re-extraction deletes and recreates the rows (latest state only, no history).
+Attribution is document-level for now: votes carry the printed agenda item, not
+page or chunk references.
 """
 
 from __future__ import annotations
 
-import difflib
 import logging
 import re
 from dataclasses import dataclass, field
 
 log = logging.getLogger(__name__)
 
-VOTE_PARSER_VERSION = "omrostningsdetaljer-v5"
+VOTE_PARSER_VERSION = "omrostningsdetaljer-v7"
 
 # "Omröstningsdetaljer" introduces a block of named voter lists.
 MARKER_RE = re.compile(r"Omröstningsdetaljer", re.IGNORECASE)
@@ -43,10 +43,8 @@ TALLY_RE = re.compile(
 )
 PROPOSITION_RE = re.compile(r"omröstningsproposition(?:en)?\s*:\s*", re.IGNORECASE)
 
-# Page furniture that can split a name list across a chunk boundary. The
-# chunker merges short header fragments into paragraph lines ("Sida 26 (73)
-# Protokoll 2025-02-24 Ordföranden finner ..."), so only the noise itself may
-# be removed — never the whole line around it.
+# Page furniture that survives the layout pass on some documents. Only the
+# noise itself may be removed — never the whole line around it.
 PAGE_NOISE_RES: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bSida\s+\d+(?:\s*\(\d+\)|\s+av\s+\d+)?", re.IGNORECASE),
     re.compile(r"\bProtokoll\s+\d{4}-\d{2}-\d{2}", re.IGNORECASE),
@@ -121,7 +119,6 @@ _DECISION_RES: tuple[re.Pattern[str], ...] = (
     ),
 )
 
-MAX_LIST_CHARS = 4000
 MAX_PROPOSITION_CHARS = 600
 # The result sentence ("Med N ja-röster ...") is reprinted at the top of every
 # page a details section spans; identical tallies closer than this are repeats.
@@ -151,8 +148,6 @@ class ParsedReservation:
 
 @dataclass
 class ParsedVote:
-    chunk_index: int | None
-    agenda_item_id: int | None
     proposition: str = ""
     outcome_text: str = ""
     decision_text: str = ""
@@ -168,8 +163,25 @@ class ParsedVote:
     records_match_tally: bool | None = None
 
 
+def _markdown_plain(md: str) -> str:
+    """Flatten xberg markdown to plain text: drop heading markers and emphasis."""
+    lines = []
+    for line in md.splitlines():
+        line = line.strip()
+        line = re.sub(r"^#{1,6}\s+", "", line)
+        line = line.replace("**", "").replace("*", "")
+        lines.append(line)
+    return "\n".join(lines)
+
+
 def _normalize(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
+
+
+def _clean_page_noise(text: str) -> str:
+    for pattern in PAGE_NOISE_RES:
+        text = pattern.sub(" ", text)
+    return text
 
 
 def _scan_list(text: str, start: int, limit: int) -> list[tuple[str, str]]:
@@ -207,13 +219,13 @@ def _parse_lists(text: str, start: int, end: int) -> list[ParsedRecord]:
     sections = _stance_sections(text, start, end)
     for i, (label_start, label_end, stance) in enumerate(sections):
         limit = sections[i + 1][0] if i + 1 < len(sections) else end
-        limit = min(limit, label_end + MAX_LIST_CHARS)
+        limit = min(limit, label_end + 4000)
         for position, (name, party) in enumerate(_scan_list(text, label_end, limit), start=1):
             records.append(ParsedRecord(position, name, party, stance))
     return records
 
 
-def _vote_boundaries(window: str, seg_start: int, seg_end: int) -> list[int]:
+def _vote_boundaries(text: str, seg_start: int, seg_end: int) -> list[int]:
     """Vote starts within one round segment.
 
     Within one vote the labeled sections always appear in ja → nej → avstår →
@@ -224,7 +236,7 @@ def _vote_boundaries(window: str, seg_start: int, seg_end: int) -> list[int]:
     rank = {stance: i for i, (stance, _) in enumerate(STANCE_LABELS)}
     boundaries = [seg_start]
     previous_rank = None
-    for label_start, _, stance in _stance_sections(window, seg_start, seg_end):
+    for label_start, _, stance in _stance_sections(text, seg_start, seg_end):
         if previous_rank is not None and rank[stance] <= previous_rank:
             boundaries.append(label_start)
         previous_rank = rank[stance]
@@ -263,7 +275,7 @@ def _annotate(vote: ParsedVote) -> None:
 
 
 def _reservation_windows(
-    stitched: str, base: int, segments: list[dict], next_boundary: int
+    text: str, base: int, segments: list[dict], next_boundary: int
 ) -> dict[int, str]:
     """Per-segment text between a vote's outcome sentence and the next thing
     printed (the next tally, the next vote's proposition lead-in, or the
@@ -274,13 +286,13 @@ def _reservation_windows(
         candidates = [next_boundary]
         if i + 1 < len(segments):
             candidates.append(base + segments[i + 1]["pos"])
-        following_prop = PROPOSITION_RE.search(stitched, sentence_end, next_boundary)
+        following_prop = PROPOSITION_RE.search(text, sentence_end, next_boundary)
         if following_prop:
             candidates.append(following_prop.start())
         end = min(candidates)
         if end <= sentence_end:
             continue
-        window = stitched[sentence_end:min(end, sentence_end + MAX_RESERVATION_WINDOW_CHARS)]
+        window = text[sentence_end:min(end, sentence_end + MAX_RESERVATION_WINDOW_CHARS)]
         if _normalize(window):
             windows[i] = window
     return windows
@@ -378,7 +390,7 @@ def _parse_window(window: str) -> list[tuple[int, ParsedVote]]:
         boundaries = _vote_boundaries(window, seg_start, seg_end)
         for j, group_start in enumerate(boundaries):
             group_end = boundaries[j + 1] if j + 1 < len(boundaries) else seg_end
-            vote = ParsedVote(chunk_index=None, agenda_item_id=None)
+            vote = ParsedVote()
             vote.records = _parse_lists(window, group_start, group_end)
             vote.has_details = bool(vote.records)
             if vote.records:
@@ -410,66 +422,16 @@ def _finalize(vote: ParsedVote) -> None:
     vote.records_match_tally = match
 
 
-def _clean_page_noise(text: str) -> str:
-    for pattern in PAGE_NOISE_RES:
-        text = pattern.sub(" ", text)
-    return text
-
-
-def _stitch(chunks: list[dict]) -> tuple[str, list[tuple[int, int, int]]]:
-    """Concatenate chunk texts (whitespace-normalized, page furniture dropped).
-
-    Returns the stitched text and (start, end, chunk_index) spans so parsed
-    positions can be attributed back to the chunk they started in.
-    """
-    parts: list[str] = []
-    spans: list[tuple[int, int, int]] = []
-    offset = 0
-    for idx, chunk in enumerate(chunks):
-        cleaned = _normalize(_clean_page_noise(chunk["text"]))
-        if parts:
-            parts.append(" ")
-            offset += 1
-        spans.append((offset, offset + len(cleaned), idx))
-        parts.append(cleaned)
-        offset += len(cleaned)
-    return "".join(parts), spans
-
-
-def _chunk_index_at(spans: list[tuple[int, int, int]], pos: int) -> int | None:
-    owner = None
-    for start, end, idx in spans:
-        if start <= pos < end:
-            return idx
-        if start <= pos:
-            owner = idx  # position in a join space: attribute to the previous chunk
-    return owner
-
-
-def _vote_from_segment(segment: dict, spans, chunks, abs_pos: int) -> ParsedVote:
-    idx = _chunk_index_at(spans, abs_pos)
-    agenda_item = chunks[idx]["agenda_item"] if idx is not None else None
-    return ParsedVote(
-        chunk_index=idx,
-        agenda_item_id=agenda_item,
-        proposition=segment["proposition"],
-        outcome_text=segment["sentence"],
-        tally_yes=segment["yes"],
-        tally_no=segment["no"],
-        tally_abstain=segment["abstain"],
-    )
-
-
-def parse_version(chunks: list[dict]) -> list[ParsedVote]:
-    """Parse recorded votes from one version's chunk texts (dicts: pk/agenda_item/text)."""
-    if not chunks:
+def parse_markdown(markdown: str) -> list[ParsedVote]:
+    """Parse recorded votes from one version's IR markdown."""
+    text = _normalize(_clean_page_noise(_markdown_plain(markdown)))
+    if not text:
         return []
-    stitched, spans = _stitch(chunks)
-    markers = [match.start() for match in MARKER_RE.finditer(stitched)]
+    markers = [match.start() for match in MARKER_RE.finditer(text)]
     # "§ N <title> ... Beslut" headings, for resolving each vote's agenda item.
     headings = [
         (match.start(), int(match.group("number")), _normalize(match.group("title")))
-        for match in AGENDA_HEADING_RE.finditer(stitched)
+        for match in AGENDA_HEADING_RE.finditer(text)
     ]
 
     def agenda_at(pos: int) -> tuple[int | None, str]:
@@ -493,7 +455,13 @@ def parse_version(chunks: list[dict]) -> list[ParsedVote]:
         if emitted and emitted[0] == numbers and pos - emitted[1] < PAGE_REPEAT_CHARS:
             return
         emitted = (numbers, pos)
-        vote = _vote_from_segment(segment, spans, chunks, pos)
+        vote = ParsedVote(
+            proposition=segment["proposition"],
+            outcome_text=segment["sentence"],
+            tally_yes=segment["yes"],
+            tally_no=segment["no"],
+            tally_abstain=segment["abstain"],
+        )
         vote.reservations = reservations
         vote.printed_agenda_number, vote.printed_agenda_title = agenda_at(pos)
         _annotate(vote)
@@ -501,10 +469,10 @@ def parse_version(chunks: list[dict]) -> list[ParsedVote]:
 
     for k, marker in enumerate(markers):
         gap_start = markers[k - 1] if k else 0
-        segments, trailing_prop = _segments_and_trailing(stitched[gap_start:marker])
-        block_end = markers[k + 1] if k + 1 < len(markers) else len(stitched)
-        rounds = _parse_window(stitched[marker:block_end])
-        reservation_windows = _reservation_windows(stitched, gap_start, segments, marker)
+        segments, trailing_prop = _segments_and_trailing(text[gap_start:marker])
+        block_end = markers[k + 1] if k + 1 < len(markers) else len(text)
+        rounds = _parse_window(text[marker:block_end])
+        reservation_windows = _reservation_windows(text, gap_start, segments, marker)
         parsed_windows = {i: _parse_reservations(window) for i, window in reservation_windows.items()}
 
         # Gap tallies attach to the round whose named counts verify them; the
@@ -533,12 +501,6 @@ def parse_version(chunks: list[dict]) -> list[ParsedVote]:
             elif i == 0 and trailing_prop:
                 round_vote.proposition = trailing_prop
             abs_pos = marker + seg_start
-            round_vote.chunk_index = _chunk_index_at(spans, abs_pos)
-            round_vote.agenda_item_id = (
-                chunks[round_vote.chunk_index]["agenda_item"]
-                if round_vote.chunk_index is not None
-                else None
-            )
             round_vote.printed_agenda_number, round_vote.printed_agenda_title = agenda_at(abs_pos)
             _finalize(round_vote)
             _annotate(round_vote)
@@ -549,8 +511,8 @@ def parse_version(chunks: list[dict]) -> list[ParsedVote]:
     # printed without named lists; each pairs with its nearest preceding
     # proposition.
     tail_start = markers[-1] if markers else 0
-    tail_segments, _ = _segments_and_trailing(stitched[tail_start:])
-    tail_windows = _reservation_windows(stitched, tail_start, tail_segments, len(stitched))
+    tail_segments, _ = _segments_and_trailing(text[tail_start:])
+    tail_windows = _reservation_windows(text, tail_start, tail_segments, len(text))
     for seg_index, segment in enumerate(tail_segments):
         emit_standalone(
             segment,
@@ -562,86 +524,22 @@ def parse_version(chunks: list[dict]) -> list[ParsedVote]:
     return [vote for _, vote in found]
 
 
-def _normalize_agenda_title(title: str) -> str:
-    return re.sub(r"\s+", " ", title).strip().rstrip(".").lower()
-
-
-def _resolve_agenda_items(version, parsed: list[ParsedVote]) -> dict[int, int]:
-    """Map the printed agenda number of each vote to an AgendaItem pk among the
-    version document's meetings.
-
-    Protocols carry "§ N <title> Beslut" headings. Where the printed §-number
-    is the agenda numbering, a direct number match works; otherwise (e.g.
-    Uppsala prints minutes paragraph numbers) the printed title is matched
-    against the agenda item titles, tolerating a leading "Svar på " and small
-    elisions. Votes whose number and title match nothing stay unlinked and are
-    displayed via the printed title alone.
-    """
-    from core.models import AgendaItem, DocumentAssociation
-
-    meeting_ids = list(
-        DocumentAssociation.objects.filter(document_id=version.document_id).values_list(
-            "meeting_id", flat=True
-        )
-    )
-    numbers = {vote.printed_agenda_number for vote in parsed if vote.printed_agenda_number is not None}
-    if not meeting_ids or not numbers:
-        return {}
-
-    items = list(AgendaItem.objects.filter(meeting_id__in=meeting_ids))
-    by_number = {item.agenda_number: item.pk for item in items if item.agenda_number is not None}
-    by_title: dict[str, int] = {}
-    for item in items:
-        by_title.setdefault(_normalize_agenda_title(item.title), item.pk)
-
-    resolved: dict[int, int] = {}
-    for vote in parsed:
-        if vote.printed_agenda_number is None:
-            continue
-        pk = by_number.get(vote.printed_agenda_number)
-        if pk is None and vote.printed_agenda_title:
-            key = _normalize_agenda_title(vote.printed_agenda_title)
-            pk = by_title.get(key) or by_title.get(key.removeprefix("svar på "))
-            if pk is None and len(key) >= 25:
-                for item_key, item_pk in by_title.items():
-                    if item_key.startswith(key) or key.startswith(item_key):
-                        pk = item_pk
-                        break
-            if pk is None and len(key) >= 25:
-                # Protocol titles reword the proposer clause ("från X (M)" ->
-                # "X (M) m.fl."); accept a close, unambiguous match.
-                close = difflib.get_close_matches(key, list(by_title), n=1, cutoff=0.85)
-                if close:
-                    pk = by_title[close[0]]
-        if pk is not None:
-            resolved[vote.printed_agenda_number] = pk
-    return resolved
-
-
-def store(version, chunks: list[dict], parsed: list[ParsedVote]) -> tuple[int, int]:
+def store(version, parsed: list[ParsedVote]) -> tuple[int, int]:
     """Replace the version's Vote/VoteRecord/VoteReservation rows. Call inside a transaction."""
     from core.models import Vote, VoteRecord, VoteReservation  # local import: parser stays import-light
 
-    agenda_by_number = _resolve_agenda_items(version, parsed)
     Vote.objects.filter(document_version=version).delete()
     votes_created = 0
     records_created = 0
     for sequence, parsed_vote in enumerate(parsed, start=1):
-        chunk_pk = (
-            chunks[parsed_vote.chunk_index]["pk"] if parsed_vote.chunk_index is not None else None
-        )
-        agenda_item_id = parsed_vote.agenda_item_id
-        if agenda_item_id is None and parsed_vote.printed_agenda_number is not None:
-            agenda_item_id = agenda_by_number.get(parsed_vote.printed_agenda_number)
         vote = Vote.objects.create(
             document_version=version,
-            chunk_id=chunk_pk,
-            agenda_item_id=agenda_item_id,
             sequence=sequence,
             proposition=parsed_vote.proposition[:2000],
             outcome_text=parsed_vote.outcome_text[:1000],
             decision_text=parsed_vote.decision_text[:200],
             vote_type=parsed_vote.vote_type,
+            printed_agenda_number=parsed_vote.printed_agenda_number,
             agenda_title=parsed_vote.printed_agenda_title[:300],
             tally_yes=parsed_vote.tally_yes,
             tally_no=parsed_vote.tally_no,

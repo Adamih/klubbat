@@ -3,7 +3,7 @@
 import pytest
 from django.urls import reverse
 
-from core.models import AgendaItem, Chunk, Decision, DocumentVersion, Meeting, VoteRecord
+from core.models import AgendaItem, Decision, DocumentVersion
 from ingestion import decisions, pipeline
 
 pytestmark = pytest.mark.django_db
@@ -16,10 +16,6 @@ JA_LIST = (
 NEJ_LIST = "Nej-röster avger:\nSofia Andersson (M) och Marta Obminska (M)."
 
 
-def _chunk(text, pk=1, agenda_item=None):
-    return {"pk": pk, "agenda_item": agenda_item, "text": text}
-
-
 def test_parse_decision_blocks():
     text = (
         "§ 1 Val av justerare samt justeringsdag Beslut Kommunfullmäktige beslutar 1. att utse "
@@ -29,7 +25,7 @@ def test_parse_decision_blocks():
         "motionen med föredragningen i ärendet. Ärendet Motionen yrkar om utredning. Beslutsgång "
         "Ordföranden finner att det finns ett förslag till beslut."
     )
-    parsed = decisions.parse_decisions([_chunk(text)])
+    parsed = decisions.parse_markdown(text)
     assert len(parsed) == 3
     first, second, third = parsed
     assert first.printed_agenda_number == 1
@@ -42,34 +38,35 @@ def test_parse_decision_blocks():
     assert third.decision_text.endswith("i ärendet.")  # cut at Ärendet
 
 
-def test_parse_decisions_skips_versions_without_headings():
-    assert decisions.parse_decisions([_chunk("Inga beslut här.")]) == []
+def test_parse_markdown_headings():
+    """xberg markdown: § items arrive as headings; the parser flattens them."""
+    text = (
+        "# § 5\n# Svar på motion om utredning\n### Beslut\nKommunfullmäktige beslutar 1. att "
+        "besvara motionen med föredragningen i ärendet.\n### Ärendet\nMotionen yrkar.\n"
+    )
+    parsed = decisions.parse_markdown(text)
+    assert len(parsed) == 1
+    decision = parsed[0]
+    assert decision.printed_agenda_number == 5
+    assert decision.decision_text.startswith("Kommunfullmäktige beslutar")
+    assert decision.decision_text.endswith("i ärendet.")
+    assert decision.outcome == "avslag"
+
+
+def test_parse_markdown_without_headings():
+    assert decisions.parse_markdown("Inga beslut här.") == []
 
 
 def _seed_protocol(document, version, text):
     document.doc_type = "protokoll"
     document.save(update_fields=["doc_type"])
     version.processing_status = DocumentVersion.Status.PROCESSED
-    version.save(update_fields=["processing_status"])
-    Chunk.objects.create(
-        document_version=version,
-        sequence=999,
-        title=document.title,
-        text=text,
-        page_start=1,
-        page_end=2,
-        processing_version="test",
-    )
+    version.markdown = text
+    version.save(update_fields=["processing_status", "markdown"])
 
 
-def test_extract_decisions_pipeline_and_idempotency(source_tree, stored_version):
-    _, _, meeting = source_tree
+def test_extract_decisions_pipeline_and_idempotency(stored_version):
     document, version = stored_version
-    item = AgendaItem.objects.create(
-        meeting=meeting,
-        agenda_number=3,
-        title="Svar på motion om utredning",
-    )
     text = (
         "§ 3 Svar på motion om utredning KSN-2026-00123 Beslut Kommunfullmäktige beslutar "
         "1. att besvara motionen med föredragningen i ärendet. Ärendet Motionen yrkar. "
@@ -80,7 +77,7 @@ def test_extract_decisions_pipeline_and_idempotency(source_tree, stored_version)
     stats = pipeline.extract_decisions(run=run)
     assert stats["versions"] == 1 and stats["decisions"] == 1
     decision = Decision.objects.get()
-    assert decision.agenda_item_id == item.pk
+    assert decision.printed_agenda_number == 3
     assert decision.printed_dnr == "KSN-2026-00123"
     assert decision.outcome == "avslag"
     version.refresh_from_db()
@@ -92,7 +89,7 @@ def test_extract_decisions_pipeline_and_idempotency(source_tree, stored_version)
     assert stats3["decisions"] == 1 and Decision.objects.count() == 1
 
 
-def test_extract_decisions_skips_non_protocol_documents(source_tree, stored_version):
+def test_extract_decisions_skips_non_protocol_documents(stored_version):
     """Committee reports print the same §-headings, but as proposals — the
     decision pipeline covers protocols only."""
     document, version = stored_version
@@ -118,6 +115,11 @@ def test_agenda_item_page_shows_decision_and_votes(client, source_tree, stored_v
         agenda_number=18,
         title="Svar på motion om utredning",
     )
+    from core.models import DocumentAssociation
+
+    association = DocumentAssociation.objects.get(document=document, meeting=meeting)
+    association.agenda_item = item
+    association.save(update_fields=["agenda_item"])
     text = (
         "§ 18 Svar på motion om utredning KSN-2026-00123 Beslut Kommunfullmäktige beslutar "
         "1. att bifalla kommunstyrelsens förslag. Beslutsgång Ordföranden finner att det finns "

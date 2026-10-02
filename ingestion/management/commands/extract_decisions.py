@@ -6,7 +6,7 @@ from .discover_meetings import _summary
 
 class Command(BaseCommand):
     help = (
-        "Parse agenda-item decision blocks (Beslut) from extracted chunk text for "
+        "Parse agenda-item decision blocks (Beslut) from IR markdown for "
         "processed versions. Cheap stage: re-runnable, skips versions already stamped "
         "with the current parser version unless --force."
     )

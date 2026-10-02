@@ -7,7 +7,7 @@
     <tr><th>Täckning (mötesdatum)</th><td>{% if coverage.earliest %}{{ coverage.earliest|date:"Y-m-d" }} – {{ coverage.latest|date:"Y-m-d" }}{% else %}—{% endif %}</td></tr>
     <tr><th>Möten</th><td>{{ meeting_count }}</td></tr>
     <tr><th>Dokument</th><td>{{ document_count }}</td></tr>
-    <tr><th>Text-chunks</th><td>{{ chunk_count }}</td></tr>
+    <tr><th>Versioner med text</th><td>{{ indexed_version_count }}</td></tr>
     <tr><th>FTS-rader</th><td>{{ fts_rows }}</td></tr>
     <tr><th>Versioner bearbetade / köade / misslyckade</th>
         <td>{{ version_counts.processed|default:0 }} / {{ version_counts.pending|default:0 }} / {{ version_counts.failed|default:0 }}</td></tr>
@@ -20,7 +20,7 @@
 
 <h2>Senaste ingestionkörningar</h2>
 <table class="versions">
-    <tr><th>Start</th><th>Scope</th><th>Status</th><th>Möten</th><th>Dok skapade</th><th>Versioner</th><th>Chunks</th><th>Fel</th></tr>
+    <tr><th>Start</th><th>Scope</th><th>Status</th><th>Möten</th><th>Dok skapade</th><th>Versioner</th><th>Fel</th></tr>
     {% for run in recent_runs %}
     <tr>
         <td>{{ run.started_at|date:"Y-m-d H:i" }}</td>
@@ -29,7 +29,6 @@
         <td>{{ run.meetings_seen }}</td>
         <td>{{ run.documents_created }}</td>
         <td>{{ run.versions_created }}</td>
-        <td>{{ run.chunks_created }}</td>
         <td>{{ run.failures }}</td>
     </tr>
     {% endfor %}

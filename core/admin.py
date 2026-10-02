@@ -6,7 +6,8 @@ from .models import (
     AgendaItem,
     Authority,
     Body,
-    Chunk,
+    Case,
+    CaseDocument,
     Decision,
     Document,
     DocumentAssociation,
@@ -112,14 +113,6 @@ class DocumentVersionAdmin(admin.ModelAdmin):
         self.message_user(request, f"{count} versioner markerade som misslyckade.")
 
 
-@admin.register(Chunk)
-class ChunkAdmin(admin.ModelAdmin):
-    list_display = ("document_version", "sequence", "agenda_item", "page_start", "page_end", "title")
-    list_filter = ("document_version__document__doc_type",)
-    search_fields = ("text", "title")
-    raw_id_fields = ("document_version", "agenda_item")
-
-
 @admin.register(DocumentAssociation)
 class DocumentAssociationAdmin(admin.ModelAdmin):
     list_display = ("document", "meeting", "agenda_item", "source_context")
@@ -151,7 +144,7 @@ class VoteAdmin(admin.ModelAdmin):
         "parser_version",
     )
     list_filter = ("has_details", "records_match_tally", "vote_type")
-    raw_id_fields = ("document_version", "chunk", "agenda_item")
+    raw_id_fields = ("document_version",)
     inlines = [VoteRecordInline, VoteReservationInline]
 
 
@@ -162,12 +155,30 @@ class VoteReservationAdmin(admin.ModelAdmin):
     search_fields = ("text", "member_name", "party_codes")
 
 
+class CaseDocumentInline(admin.TabularInline):
+    model = CaseDocument
+    extra = 0
+    raw_id_fields = ("document",)
+
+
+@admin.register(Case)
+class CaseAdmin(admin.ModelAdmin):
+    list_display = ("dnr", "title", "kind", "created_display")
+    list_filter = ("kind",)
+    search_fields = ("dnr", "title")
+    inlines = [CaseDocumentInline]
+
+    @admin.display(description="Skapad", ordering="created_at")
+    def created_display(self, obj):
+        return obj.created_at
+
+
 @admin.register(Decision)
 class DecisionAdmin(admin.ModelAdmin):
     list_display = ("document_version", "sequence", "printed_agenda_number", "outcome", "parser_version")
     list_filter = ("outcome",)
     search_fields = ("decision_text", "printed_agenda_title", "printed_dnr")
-    raw_id_fields = ("document_version", "chunk", "agenda_item")
+    raw_id_fields = ("document_version",)
 
 
 @admin.register(IngestionRun)
@@ -179,7 +190,6 @@ class IngestionRunAdmin(admin.ModelAdmin):
         "meetings_seen",
         "documents_created",
         "versions_created",
-        "chunks_created",
         "failures",
     )
     list_filter = ("status", "scope")
@@ -193,6 +203,5 @@ class IngestionRunAdmin(admin.ModelAdmin):
         "documents_seen",
         "documents_created",
         "versions_created",
-        "chunks_created",
         "failures",
     )

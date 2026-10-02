@@ -17,13 +17,8 @@
 {% if version.stored_path %}<p><a href="{% url 'website:version-file' version.pk %}">Bevarad PDF</a></p>{% endif %}
 
 <h2>Text</h2>
-{% if chunks %}
-{% for c in chunks %}
-<details class="chunk" {% if forloop.first %}open{% endif %}>
-    <summary>Seq {{ c.sequence }} · s. {{ c.page_start }}{% if c.page_end != c.page_start %}–{{ c.page_end }}{% endif %}{% if c.agenda_item %} · §{{ c.agenda_item.agenda_number|default_if_none:"–" }}{% endif %} — {{ c.title }}</summary>
-    <pre>{{ c.text }}</pre>
-</details>
-{% endfor %}
+{% if markdown_html %}
+<article class="doc-text markdown">{{ markdown_html|safe }}</article>
 {% else %}
 <p class="notice">Ingen extraherad text för denna version (status: {{ version.get_processing_status_display }}).</p>
 {% endif %}

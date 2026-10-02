@@ -10,19 +10,20 @@
     {% if item.diarienummer %} · dnr {{ item.diarienummer }}{% endif %}
 </p>
 
-{% if decisions %}
+{% if decision_rows %}
 <h2>Beslut</h2>
-{% for decision in decisions %}
+{% for row in decision_rows %}
 <div class="decision-entry">
     <p class="decision-entry-text">
-        {% if decision.outcome != 'annat' %}<span class="vote-type vote-type-{{ decision.outcome }}">{{ decision.get_outcome_display }}</span>{% endif %}
-        {{ decision.decision_text }}
+        {% if row.decision.outcome != 'annat' %}<span class="vote-type vote-type-{{ row.decision.outcome }}">{{ row.decision.get_outcome_display }}</span>{% endif %}
+        {{ row.decision.decision_text }}
     </p>
-    {% if decision.printed_dnr %}<p class="meta">dnr {{ decision.printed_dnr }}</p>{% endif %}
-    {% if decision.chunk %}
-    <p class="vote-source">
-        <a href="{% url 'website:document-detail' decision.document_version.document_id %}#chunk-{{ decision.chunk_id }}">Visa i protokollet (s. {{ decision.chunk.page_start }})</a>
-    </p>
+    {% if row.decision.printed_dnr %}<p class="meta">dnr {{ row.decision.printed_dnr }}</p>{% endif %}
+    {% if row.case %}
+    <p class="meta">Ärendet: <a href="{% url 'website:case' row.case.dnr %}">{{ row.case.title|default:row.case.dnr }}</a></p>
+    {% endif %}
+    {% if row.document %}
+    <p class="meta"><a href="{% url 'website:document-detail' row.document.pk %}">{{ row.document.title|truncatechars:80 }}</a></p>
     {% endif %}
 </div>
 {% endfor %}

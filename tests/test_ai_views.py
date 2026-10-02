@@ -3,8 +3,6 @@
 import pytest
 from django.urls import reverse
 
-from core.models import Chunk
-
 pytestmark = pytest.mark.django_db
 
 
@@ -23,19 +21,11 @@ def test_base_links_settings_page(client):
     assert 'href="/installningar/"' in res.content.decode()
 
 
-def test_document_detail_has_summary_section_when_chunks_exist(client, stored_version):
+def test_document_detail_has_summary_section_when_text_exists(client, stored_version):
     document, version = stored_version
     version.processing_status = version.Status.PROCESSED
-    version.save(update_fields=["processing_status"])
-    Chunk.objects.create(
-        document_version=version,
-        sequence=0,
-        title="Sammanfattning av saken",
-        text="Handläggningen gäller detaljplanen.",
-        page_start=1,
-        page_end=1,
-        processing_version="test",
-    )
+    version.markdown = "# Sammanfattning av saken\n\nHandläggningen gäller detaljplanen."
+    version.save(update_fields=["processing_status", "markdown"])
     res = client.get(reverse("website:document-detail", args=[document.pk]))
     assert res.status_code == 200
     content = res.content.decode()
@@ -44,7 +34,7 @@ def test_document_detail_has_summary_section_when_chunks_exist(client, stored_ve
     assert 'id="ai-summary-output"' in content
 
 
-def test_document_detail_has_no_summary_section_without_chunks(client, stored_version):
+def test_document_detail_has_no_summary_section_without_text(client, stored_version):
     document, _ = stored_version
     res = client.get(reverse("website:document-detail", args=[document.pk]))
     assert res.status_code == 200

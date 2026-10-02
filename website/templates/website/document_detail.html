@@ -4,7 +4,7 @@
 <h1>{{ document.title }}</h1>
 <p class="meta">{{ doc_type_label }} · <a href="{{ document.primary_source_url }}">Originalkälla</a></p>
 
-{% if chunks %}
+{% if markdown_html %}
 <section class="ai-summary" data-doc-title="{{ document.title }}" data-doc-type="{{ doc_type_label }}">
     <h2>Sammanfattning med AI</h2>
     <button type="button" id="ai-summary-button">Sammanfatta</button>
@@ -22,6 +22,9 @@
 
 <h2>Kopplingar</h2>
 <ul class="associations">
+    {% for c in cases %}
+    <li>Ärende: <a href="{% url 'website:case' c.dnr %}">{{ c.title|default:c.dnr }}</a> <span class="meta">dnr {{ c.dnr }} · {{ c.get_kind_display }}</span></li>
+    {% endfor %}
     {% for a in associations %}
     <li>
         <a href="{% url 'website:meeting-detail' a.meeting.pk %}">{{ a.meeting.date|date:"Y-m-d" }} — {{ a.meeting.title }}</a>
@@ -53,13 +56,8 @@
 </table>
 
 <h2>Text (aktuell version)</h2>
-{% if chunks %}
-{% for c in chunks %}
-<details class="chunk" id="chunk-{{ c.pk }}">
-    <summary>s. {{ c.page_start }}{% if c.page_end != c.page_start %}–{{ c.page_end }}{% endif %} — {{ c.title }}</summary>
-    <pre>{{ c.text }}</pre>
-</details>
-{% endfor %}
+{% if markdown_html %}
+<article class="doc-text markdown">{{ markdown_html|safe }}</article>
 {% elif current_version %}
 <p class="notice">
     Text saknas: aktuell version har statusen {{ current_version.get_processing_status_display }}.
