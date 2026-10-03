@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 
 log = logging.getLogger(__name__)
 
-VOTE_PARSER_VERSION = "omrostningsdetaljer-v7"
+VOTE_PARSER_VERSION = "omrostningsdetaljer-v8"
 
 # "Omröstningsdetaljer" introduces a block of named voter lists.
 MARKER_RE = re.compile(r"Omröstningsdetaljer", re.IGNORECASE)
@@ -527,11 +527,23 @@ def parse_markdown(markdown: str) -> list[ParsedVote]:
 def store(version, parsed: list[ParsedVote]) -> tuple[int, int]:
     """Replace the version's Vote/VoteRecord/VoteReservation rows. Call inside a transaction."""
     from core.models import Vote, VoteRecord, VoteReservation  # local import: parser stays import-light
+    from core.textmatch import find_page
 
     Vote.objects.filter(document_version=version).delete()
     votes_created = 0
     records_created = 0
     for sequence, parsed_vote in enumerate(parsed, start=1):
+        # Best-effort page reference: the result sentence, else the
+        # proposition, else the first named voter.
+        page = None
+        for needle in (
+            parsed_vote.outcome_text,
+            parsed_vote.proposition,
+            parsed_vote.records[0].member_name if parsed_vote.records else "",
+        ):
+            page = find_page(version.pk, needle)
+            if page is not None:
+                break
         vote = Vote.objects.create(
             document_version=version,
             sequence=sequence,
@@ -541,6 +553,7 @@ def store(version, parsed: list[ParsedVote]) -> tuple[int, int]:
             vote_type=parsed_vote.vote_type,
             printed_agenda_number=parsed_vote.printed_agenda_number,
             agenda_title=parsed_vote.printed_agenda_title[:300],
+            page=page,
             tally_yes=parsed_vote.tally_yes,
             tally_no=parsed_vote.tally_no,
             tally_abstain=parsed_vote.tally_abstain,

@@ -56,7 +56,16 @@
 </table>
 
 <h2>Text (aktuell version)</h2>
-{% if markdown_html %}
+{% if page_sections %}
+<div class="doc-text">
+{% for section in page_sections %}
+<section class="doc-page" id="page-{{ section.number }}">
+    <p class="doc-page-meta">s. {{ section.number }}</p>
+    <div class="markdown">{{ section.html|safe }}</div>
+</section>
+{% endfor %}
+</div>
+{% elif markdown_html %}
 <article class="doc-text markdown">{{ markdown_html|safe }}</article>
 {% elif current_version %}
 <p class="notice">

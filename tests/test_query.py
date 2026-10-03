@@ -58,6 +58,7 @@ def test_search_respects_filters(stored_version, source_tree):
     row = data["results"][0]
     assert row["document_id"] == document.id
     assert row["version_id"] == version.id
+    assert row["page_start"] == 1  # page reference located via the snippet
     assert "<mark>" in row["snippet_html"]
     assert "Spårvägen" in row["snippet_html"] or "Stenhagen" in row["snippet_html"]
 

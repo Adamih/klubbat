@@ -58,11 +58,15 @@ def test_parse_markdown_without_headings():
 
 
 def _seed_protocol(document, version, text):
+    from core.models import DocumentPage
+
     document.doc_type = "protokoll"
     document.save(update_fields=["doc_type"])
     version.processing_status = DocumentVersion.Status.PROCESSED
     version.markdown = text
     version.save(update_fields=["processing_status", "markdown"])
+    DocumentPage.objects.filter(document_version=version).delete()
+    DocumentPage.objects.create(document_version=version, number=12, text=text)
 
 
 def test_extract_decisions_pipeline_and_idempotency(stored_version):
@@ -157,6 +161,7 @@ def test_decisions_feed_and_filters(client, stored_version):
     content = res.content.decode()
     assert "besvara motionen med föredragningen" in content
     assert "vote-type-avslag" in content
+    assert "Visa i protokollet (s. 12)" in content  # page reference restored
 
     res = client.get(reverse("website:decisions"), {"typ": "bifall"})
     assert "Inga beslut matchar filtret" in res.content.decode()

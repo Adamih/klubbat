@@ -23,7 +23,9 @@
     <p class="meta">Ärendet: <a href="{% url 'website:case' row.case.dnr %}">{{ row.case.title|default:row.case.dnr }}</a></p>
     {% endif %}
     {% if row.document %}
-    <p class="meta"><a href="{% url 'website:document-detail' row.document.pk %}">{{ row.document.title|truncatechars:80 }}</a></p>
+    <p class="meta"><a href="{% url 'website:document-detail' row.document.pk %}">{{ row.document.title|truncatechars:80 }}</a>
+        {% if row.decision.page %} · <a href="{% url 'website:document-detail' row.document.pk %}#page-{{ row.decision.page }}">Visa i protokollet (s. {{ row.decision.page }})</a>{% endif %}
+    </p>
     {% endif %}
     {% include "website/_tag_chips.html" with decision=row.decision %}
 </div>

@@ -11,7 +11,7 @@
         {% for r in results %}
         <li class="result">
             <a class="doc-link" href="{% url 'website:document-detail' r.document_id %}">{{ r.document_title }}</a>
-            <div class="meta">{{ r.doc_type_label }} · {{ r.meeting_text }} · s. {{ r.page_start }}</div>
+            <div class="meta">{{ r.doc_type_label }} · {{ r.meeting_text }}{% if r.page_start %} · s. {{ r.page_start }}{% endif %}</div>
             <p class="snippet">{{ r.snippet_html|safe }}</p>
             <div class="links">
                 <a href="{{ r.source_url }}">Originalkälla</a>

@@ -83,7 +83,7 @@ dyra att återskapa) kopieras som standard till `backups/derived-<tidsstämpel>/
 | IR-extraktion | `ingestion/ir.py` — xberg renderar PDF till strukturerad markdown (rubrikträd, tabeller, sidtext), OCR via tesseract (swe), sidecar-JSON i `data/derived/` |
 | Pipeline | `ingestion/pipeline.py` — orkestrering, korta transaktioner, locking, versionering |
 | Parsning (stage C) | `ingestion/votes.py` + `ingestion/decisions.py` — grammatik över plattad markdown; `ingestion/cases.py` — ärendestygning via diarienummer |
-| Sök | `search/` — FTS5 per dokumentversion (unicode61, diakriter bevarade), BM25 med titelvikt, escapade snippet-markeringar |
+| Sök | `search/` — FTS5 per dokumentversion (unicode61, diakriter bevarade), BM25 med titelvikt, sidreferens per träff, escapade snippet-markeringar |
 | Webb | `website/` — serverrenderade mallar + HTMX; Sök, Möten, Mötesdetalj, Dokumentdetalj (markdown), Versioner, Status |
 | AI (BYO-modell) | `static/js/ai.js` + Inställningar-sidan — sammanfattning direkt från webbläsaren |
 | Admin | `core/admin.py` — inspektion, metadata, retry-åtgärder |
@@ -138,7 +138,9 @@ Completions-API (t.ex. OpenRouter: bas-URL `https://openrouter.ai/api/v1`).
 - Äldre arkiv (2003–2010, aldrehandlingar.uppsala.se) ingår inte.
 - Svensk stemning/stavningsfel-tolerans/semantisk sökning är medvetet
   bortlåst tills sökkvalitet motiverar det.
-- Sidreferenser per sökträff och per röstning är avstängda (dokumentnivå
-  gäller); IR-sidocachen sparar sidtexterna så kopplingen kan återinföras.
+- Sidreferenser är återinförda: röstningar/beslut får "Visa i text (s. N)"
+  och sökträffar visar sidnummer, via textmatchning mot IR-sidocachens
+  sidtexter. Referensen är bäst-effort — röstningar utan resultatsats kan
+  sakna sida.
 - Statistiktabeller i stora bilagor: xberg återger tabellytan läsbart men
   cellmängden är inte utförlig på de värsta dokumenten.

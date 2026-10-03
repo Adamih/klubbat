@@ -48,7 +48,10 @@
         {% endfor %}
         {% include "website/_tag_chips.html" with decision=row.decision %}
         <p class="decision-text">{{ row.decision.decision_text|truncatechars:280 }}</p>
-        <p class="meta"><a href="{% url 'website:document-detail' row.document.pk %}">{{ row.document.title }}</a></p>
+        <p class="meta">
+            <a href="{% url 'website:document-detail' row.document.pk %}">{{ row.document.title }}</a>
+            {% if row.decision.page %} · <a href="{% url 'website:document-detail' row.document.pk %}#page-{{ row.decision.page }}">Visa i protokollet (s. {{ row.decision.page }})</a>{% endif %}
+        </p>
     </li>
     {% empty %}
     <li class="notice">Inga beslut matchar filtret.</li>

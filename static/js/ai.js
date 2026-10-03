@@ -158,8 +158,8 @@ function initSummaryPage(section) {
             return;
         }
 
-        const article = section.parentElement.querySelector("article.doc-text");
-        let text = article ? article.innerText : "";
+        const documentText = section.parentElement.querySelector(".doc-text");
+        let text = documentText ? documentText.innerText : "";
         let truncation = "";
         if (text.length > MAX_CHARS) {
             text = text.slice(0, MAX_CHARS);

@@ -880,6 +880,12 @@ def document_detail_view(request, pk):
         and current.processing_status == DocumentVersion.Status.PROCESSED
         and bool(current.markdown)
     )
+    # Page sections when per-page text exists (anchor targets for
+    # "Visa i text"); the whole markdown as fallback otherwise.
+    page_rows = (
+        list(current.pages.order_by("number")) if has_text else []
+    )
+    page_sections = [{"number": p.number, "html": _markdown(p.text)} for p in page_rows]
     markdown_html = _markdown(current.markdown) if has_text else ""
     associations = document.associations.select_related(
         "meeting", "meeting__body", "meeting__body__authority", "agenda_item"
@@ -911,6 +917,7 @@ def document_detail_view(request, pk):
             "versions": versions,
             "current_version": current,
             "markdown_html": markdown_html,
+            "page_sections": page_sections,
             "associations": associations,
             "votes": votes,
             "cases": cases,

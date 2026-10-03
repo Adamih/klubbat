@@ -40,6 +40,11 @@
         {{ row.decision.decision_text }}
     </p>
     {% include "website/_tag_chips.html" with decision=row.decision %}
+    {% if row.decision.page and row.document %}
+    <p class="vote-source">
+        <a href="{% url 'website:document-detail' row.document.pk %}#page-{{ row.decision.page }}">Visa i protokollet (s. {{ row.decision.page }})</a>
+    </p>
+    {% endif %}
 </div>
 {% endfor %}
 {% else %}

@@ -197,6 +197,24 @@ class DocumentVersion(models.Model):
         return f"v{self.pk} {self.document.title[:60]} ({self.processing_status})"
 
 
+class DocumentPage(models.Model):
+    """Per-page text of one document version (stage A output, mirrored from the
+    IR sidecar). Backs page references for votes, decisions, and search hits."""
+
+    document_version = models.ForeignKey(DocumentVersion, on_delete=models.CASCADE, related_name="pages")
+    number = models.IntegerField()
+    text = models.TextField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["document_version", "number"], name="uniq_docpage_version_number"),
+        ]
+        ordering = ["document_version_id", "number"]
+
+    def __str__(self) -> str:
+        return f"v{self.document_version_id} s. {self.number}"
+
+
 class Vote(models.Model):
     """One recorded vote (stage C output), parsed from a version's markdown.
 
@@ -233,6 +251,9 @@ class Vote(models.Model):
     # ..."), used as the vote's subject.
     printed_agenda_number = models.IntegerField(null=True, blank=True)
     agenda_title = models.CharField(max_length=300, blank=True)
+    # Printed page of the vote's result sentence in the source PDF (best-effort
+    # text match; null when the page could not be located).
+    page = models.IntegerField(null=True, blank=True)
     tally_yes = models.IntegerField(null=True, blank=True)
     tally_no = models.IntegerField(null=True, blank=True)
     tally_abstain = models.IntegerField(null=True, blank=True)
@@ -320,6 +341,8 @@ class Decision(models.Model):
     printed_dnr = models.CharField(max_length=100, blank=True)
     decision_text = models.TextField()
     outcome = models.CharField(max_length=20, choices=Outcome.choices, default=Outcome.ANNAT)
+    # Printed page of the decision block in the source PDF (best-effort).
+    page = models.IntegerField(null=True, blank=True)
     parser_version = models.CharField(max_length=100)
     created_at = models.DateTimeField(auto_now_add=True)
 

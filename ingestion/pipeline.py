@@ -37,6 +37,7 @@ from core.models import (
     Body,
     Document,
     DocumentAssociation,
+    DocumentPage,
     DocumentVersion,
     IngestionRun,
     Meeting,
@@ -378,6 +379,14 @@ def process_versions(
                     "markdown", "ir_version", "ocr_used",
                     "processing_status", "processing_error", "extracted_at",
                 ]
+            )
+            # Mirror per-page text for page references (search hits, votes,
+            # decisions). Sidecars keep the same data; the DB copy makes it
+            # queryable without file access.
+            DocumentPage.objects.filter(document_version=version).delete()
+            DocumentPage.objects.bulk_create(
+                DocumentPage(document_version=version, number=p["number"], text=p["text"])
+                for p in result.pages
             )
 
 

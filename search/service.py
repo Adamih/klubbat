@@ -14,6 +14,8 @@ import re
 
 from django.db import connection
 
+from core.textmatch import find_page, normalize_for_match
+
 log = logging.getLogger(__name__)
 
 MARK_START = "\u27e6"  # ⟦
@@ -84,6 +86,25 @@ def _highlight(snippet_raw: str) -> str:
     return escaped.replace(MARK_START, "<mark>").replace(MARK_END, "</mark>")
 
 
+def _snippet_page(version_id: int, snippet_raw: str) -> int | None:
+    """Best-effort page for a hit: locate the snippet's text fragments on the
+    version's pages (the snippet is from the whole-document markdown). The FTS
+    highlight markers must go — page text has none."""
+    bare = snippet_raw.replace(MARK_START, "").replace(MARK_END, "")
+    fragments = sorted(
+        (normalize_for_match(part) for part in bare.split(" … ")),
+        key=len,
+        reverse=True,
+    )
+    for fragment in fragments:
+        if len(fragment) < 40:
+            continue
+        page = find_page(version_id, fragment)
+        if page is not None:
+            return page
+    return None
+
+
 def search(
     match_expr: str,
     *,
@@ -121,8 +142,11 @@ def search(
 
     results = []
     for row in rows:
-        row["snippet_html"] = _highlight(row.pop("snippet_raw"))
+        snippet_raw = row.pop("snippet_raw")
+        row["snippet_html"] = _highlight(snippet_raw)
+        row["page_start"] = _snippet_page(row["version_id"], snippet_raw)
         results.append(row)
+    return {"total": total, "results": results}
     return {"total": total, "results": results}
 
 

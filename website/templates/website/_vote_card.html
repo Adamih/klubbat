@@ -55,6 +55,11 @@ title is already the heading).
         </div>
         {% endif %}
         {% for warning in item.sanity %}<p class="notice">OBS: {{ warning }}</p>{% endfor %}
+        {% if item.vote.page %}
+        <p class="vote-source">
+            <a href="{% url 'website:document-detail' item.vote.document_version.document_id %}#page-{{ item.vote.page }}">Visa i text (s. {{ item.vote.page }})</a>
+        </p>
+        {% endif %}
         <div class="ai-vote">
             <button type="button" class="ai-vote-button">Förklara röstningen</button>
             <p class="ai-status" hidden></p>

@@ -27,7 +27,7 @@ from ingestion.votes import (
 
 log = logging.getLogger(__name__)
 
-DECISION_PARSER_VERSION = "beslut-v5"
+DECISION_PARSER_VERSION = "beslut-v6"
 
 # Section headings that end the decision text. Order in the protocol varies;
 # the first match inside the block ends it. Case-sensitive on purpose: the
@@ -101,9 +101,14 @@ def parse_markdown(markdown: str) -> list[ParsedDecision]:
 def store(version, parsed: list[ParsedDecision]) -> int:
     """Replace the version's Decision rows. Call inside a transaction."""
     from core.models import Decision
+    from core.textmatch import find_page
 
     Decision.objects.filter(document_version=version).delete()
     for sequence, parsed_decision in enumerate(parsed, start=1):
+        # Best-effort page reference: the decision text, else the title.
+        page = find_page(version.pk, parsed_decision.decision_text)
+        if page is None:
+            page = find_page(version.pk, parsed_decision.printed_agenda_title)
         Decision.objects.create(
             document_version=version,
             sequence=sequence,
@@ -112,6 +117,7 @@ def store(version, parsed: list[ParsedDecision]) -> int:
             printed_dnr=parsed_decision.printed_dnr,
             decision_text=parsed_decision.decision_text,
             outcome=parsed_decision.outcome,
+            page=page,
             parser_version=DECISION_PARSER_VERSION,
         )
     return len(parsed)

@@ -221,15 +221,17 @@ def test_reservations_and_yttranden_parsed():
 
 def test_printed_agenda_item_captured_from_heading(stored_version):
     document, version = _processed_version(stored_version)
-    version.markdown = (
+    _seed_markdown(
+        document,
+        version,
         "§ 18 Svar på motion om att utreda en breddning av Kungsängsbron från Therez Almerfors (M) "
         "KSN-2024-03238 Beslut Kommunfullmäktige beslutar att bifalla kommunstyrelsens förslag.\n"
         "Omröstning begärs och genomförs.\n"
         "Med 6 ja-röster mot 2 nej-röster finner ordföranden att kommunfullmäktige beslutar att "
         "bifalla kommunstyrelsens förslag.\n"
-        f"Omröstningsdetaljer\n{JA_LIST}\n{NEJ_LIST}"
+        f"Omröstningsdetaljer\n{JA_LIST}\n{NEJ_LIST}",
+        page_number=39,
     )
-    version.save(update_fields=["markdown"])
     pipeline.extract_votes(run=pipeline.begin_run("test"), version_ids=[version.id])
 
     vote = Vote.objects.get()
@@ -237,6 +239,7 @@ def test_printed_agenda_item_captured_from_heading(stored_version):
     assert vote.vote_type == "bifall"
     assert "Kungsängsbron" in vote.agenda_title
     assert vote.decision_text == "bifalla kommunstyrelsens förslag"
+    assert vote.page == 39  # result sentence located on the seeded page
 
 
 def _processed_version(stored_version):
@@ -246,9 +249,13 @@ def _processed_version(stored_version):
     return document, version
 
 
-def _seed_markdown(document, version, text):
+def _seed_markdown(document, version, text, page_number=3):
+    from core.models import DocumentPage
+
     version.markdown = text
     version.save(update_fields=["markdown"])
+    DocumentPage.objects.filter(document_version=version).delete()
+    DocumentPage.objects.create(document_version=version, number=page_number, text=text)
 
 
 def test_extract_votes_pipeline_and_idempotency(stored_version):
@@ -280,7 +287,7 @@ def test_document_detail_shows_votes_section(client, stored_version):
     _seed_markdown(
         document,
         version,
-        f"Omröstningsdetaljer\n{JA_LIST}",
+        f"Med 6 ja-röster mot 2 nej-röster beslutades bifall.\nOmröstningsdetaljer\n{JA_LIST}",
     )
     pipeline.extract_votes(run=pipeline.begin_run("test"), version_ids=[version.id])
     res = client.get(reverse("website:document-detail", args=[document.pk]))
@@ -291,7 +298,8 @@ def test_document_detail_shows_votes_section(client, stored_version):
     assert 'class="party-position"' in content
     assert "Erik Pelling" in content
     assert reverse("website:member", args=["erik-pelling"]) in content  # name links to member page
-    assert 'class="doc-text' in content  # rendered IR markdown
+    assert 'id="page-3"' in content  # per-page sections render
+    assert "Visa i text (s. 3)" in content  # page reference restored
     assert "ai-vote-button" in content  # per-vote AI explainer
 
 

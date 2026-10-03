@@ -108,13 +108,17 @@ table.versions th, table.versions td, table.status-table th, table.status-table 
 }
 table.versions th, table.status-table th { background: #eee9df; }
 
-article.doc-text { margin: 0.6rem 0; background: #fff; border: 1px solid var(--line); border-radius: 4px; padding: 0.75rem 1rem; }
-article.doc-text h1, article.doc-text h2, article.doc-text h3 { margin: 0.9rem 0 0.4rem; font-size: 1rem; }
-article.doc-text h1 { font-size: 1.1rem; }
-article.doc-text p { margin: 0.5rem 0; overflow-wrap: anywhere; }
-article.doc-text table { border-collapse: collapse; margin: 0.6rem 0; font-size: 0.85rem; }
-article.doc-text th, article.doc-text td { border: 1px solid var(--line); padding: 0.25rem 0.5rem; text-align: left; }
-article.doc-text li { margin: 0.25rem 0; }
+article.doc-text, section.doc-page { margin: 0.6rem 0; background: #fff; border: 1px solid var(--line); border-radius: 4px; padding: 0.75rem 1rem; }
+section.doc-page .doc-page-meta { margin: 0 0 0.4rem; font-size: 0.78rem; color: #777; }
+article.doc-text h1, article.doc-text h2, article.doc-text h3,
+section.doc-page h1, section.doc-page h2, section.doc-page h3 { margin: 0.9rem 0 0.4rem; font-size: 1rem; }
+article.doc-text h1, section.doc-page h1 { font-size: 1.1rem; }
+article.doc-text p, section.doc-page p { margin: 0.5rem 0; overflow-wrap: anywhere; }
+article.doc-text table, section.doc-page table { border-collapse: collapse; margin: 0.6rem 0; font-size: 0.85rem; }
+article.doc-text th, article.doc-text td,
+section.doc-page th, section.doc-page td { border: 1px solid var(--line); padding: 0.25rem 0.5rem; text-align: left; }
+article.doc-text li, section.doc-page li { margin: 0.25rem 0; }
+section.doc-page:target { border-color: var(--accent); }
 
 .topic-chip {
     display: inline-block; margin: 0.15rem 0.25rem 0.15rem 0; padding: 0.1rem 0.5rem;

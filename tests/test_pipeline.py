@@ -6,7 +6,7 @@ import pytest
 from django.db import connection
 from django.utils import timezone
 
-from core.models import Document, DocumentVersion, IngestionRun
+from core.models import Document, DocumentPage, DocumentVersion, IngestionRun
 from ingestion import pipeline
 from ingestion.ir import IR_VERSION, _clean_markdown
 from ingestion.management.commands.discover_meetings import _summary
@@ -35,6 +35,25 @@ def test_extraction_stores_markdown(stored_version):
     assert version.markdown.strip()
     assert version.ir_version == IR_VERSION
     assert "Spårvägen" in version.markdown  # Swedish diacritics survive extraction
+
+
+def test_extraction_stores_page_text(stored_version):
+    document, version = stored_version
+    pipeline.process_versions(run=pipeline.begin_run("test"), version_ids=[version.id])
+    pages = list(version.pages.order_by("number"))
+    assert pages, "per-page text must be mirrored from the IR sidecar"
+    assert pages[0].number == 1
+    assert "Spårvägen" in pages[0].text
+
+
+def test_find_page_matches_and_misses(stored_version):
+    from core.textmatch import find_page
+
+    document, version = stored_version
+    pipeline.process_versions(run=pipeline.begin_run("test"), version_ids=[version.id])
+    assert find_page(version.id, "Spårvägen till Stenhagen och Gränby behandlades vid mötet") == 1
+    assert find_page(version.id, "Någon mening som inte finns i dokumentet alls.") is None
+    assert find_page(version.id, "kort") is None  # needle below the minimum length
 
 
 def test_process_is_idempotent(stored_version):
