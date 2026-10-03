@@ -19,7 +19,7 @@ KEYWORDS = {
     "miljo": ["klimat", "naturvård", "avfall", "miljö-"],
     "stadsbyggnad": ["detaljplan", "markanvisning", "exploatering", "översiktsplan"],
     "boende": ["bostads", "hyror"],
-    "kultur": ["kulturskolan", "bibliotek", "fritid", "idrott", "förenings"],
+    "kultur": ["kulturskolan", "bibliotek", "fritid", "idrott", "förenings", "badhus", "simhall", "teater", "kulturarv"],
     "naringsliv": ["näringsliv", "besöksnäring", "arbetsmarknad"],
     "ekonomi": ["budget", "taxor", "avgifter", "bidrag", "skatter"],
     "raddning": ["räddningstjänst", "kriminal", "trygghet"],
@@ -118,6 +118,31 @@ def test_manual_tag_protected_and_used_as_seed(stored_version, classified):
     stats = pipeline.classify_content(run=pipeline.begin_run("test"))
     assert stats["protected"] == 1
     assert list(decision.tags.values_list("topic__slug", flat=True)) == ["ekonomi"]
+
+
+def test_list_documents_skipped_and_stale_tags_removed(stored_version, classified):
+    document, version = _processed(stored_version)
+    motion = Document.objects.create(
+        title="Inlämnade motioner till kommunfullmäktige 27 januari 2025", doc_type="motion",
+        primary_source_url="https://uppsala.se/test/motioner-lista",
+    )
+    motion_version = DocumentVersion.objects.create(
+        document=motion, original_url=motion.primary_source_url,
+        processing_status=DocumentVersion.Status.PROCESSED,
+    )
+    motion.current_version = motion_version
+    motion.save(update_fields=["current_version"])
+    motion_version.markdown = "Bostäder och hyror behöver öka."
+    motion_version.save(update_fields=["markdown"])
+    # A stale non-manual tag left by a previous classifier run must go away.
+    stale_topic = Topic.objects.get_or_create(slug="boende")[0]
+    Tag.objects.create(document=motion, topic=stale_topic, confidence=0.5,
+                       classifier_version="topic-centroid-v1", is_manual=False)
+
+    stats = pipeline.classify_content(run=pipeline.begin_run("test"))
+    assert stats["stale_removed"] == 1
+    # The list document itself is not classified.
+    assert not Tag.objects.filter(document=motion).exists()
 
 
 def test_dnr_prior_breaks_ties(stored_version, classified):

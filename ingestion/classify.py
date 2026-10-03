@@ -17,7 +17,7 @@ import re
 
 log = logging.getLogger(__name__)
 
-CLASSIFIER_VERSION = "topic-centroid-v1"
+CLASSIFIER_VERSION = "topic-centroid-v2"
 
 # KBLab's Swedish sentence-BERT (National Library of Sweden).
 EMBEDDING_MODEL = "KBLab/sentence-bert-swedish-cased"
@@ -39,6 +39,7 @@ TOPIC_LABEL_SET: list[dict] = [
             "Förskoleplatser och barnomsorg",
             "Rektorsindelning och skolans organisation",
             "Skolresultat och kunskapskrav",
+            "Entreprenörskap i undervisningen och skolans kontakt med näringslivet",
         ],
     },
     {
@@ -97,11 +98,14 @@ TOPIC_LABEL_SET: list[dict] = [
     {
         "slug": "kultur",
         "label": "Kultur och fritid",
-        "description": "Kulturskola, bibliotek, idrott, fritid och föreningsliv.",
+        "description": "Kulturskola, bibliotek, idrott, fritid, föreningsliv och kulturanläggningar.",
         "seeds": [
             "Kulturskolan och bibliotek",
             "Fritidsgårdar och idrottsanläggningar",
             "Föreningsstöd och evenemang",
+            "Badhus och simhallar",
+            "Teater, scenkonst och stadsteatern",
+            "Kulturarv och stadsbildens historia",
         ],
     },
     {
@@ -144,11 +148,18 @@ TOPIC_LABEL_SET: list[dict] = [
             "Fastställande av föredragningslista",
             "Anmälningsärenden till kommunfullmäktige",
             "Sammansättning av nämnder och utskott",
+            "Politikernas arvoden och ersättningar",
         ],
     },
 ]
 
 TEXT_CAP = 1200  # characters of decision/document text fed to the classifier
+
+# Compilations of several initiatives ("Inlämnade motioner/interpellationer
+# till kommunfullmäktige <datum>") span many topics: no single tag is honest.
+LIST_DOCUMENT_RE = re.compile(
+    r"Inlämnade (?:motioner|interpellationer|frågor) till kommunfullmäktige", re.IGNORECASE
+)
 
 _model = None
 
@@ -247,6 +258,8 @@ def _targets() -> list[dict]:
         .exclude(current_version__markdown="")
         .select_related("current_version")
     ):
+        if LIST_DOCUMENT_RE.search(document.title):
+            continue
         text = f"{document.title}\n{document.current_version.markdown}"[:TEXT_CAP]
         targets.append({"decision": None, "document": document, "text": text, "dnr": ""})
     return targets
@@ -261,7 +274,7 @@ def classify_content(*, run, force: bool = False) -> dict:
     """
     from django.db import transaction
 
-    from core.models import Decision, Document, Tag
+    from core.models import Decision, Document, Q, Tag
 
     topics = _ensure_topics()
     slugs = set(topics)
@@ -282,8 +295,20 @@ def classify_content(*, run, force: bool = False) -> dict:
         if tag.document_id is not None:
             tagged_by_document.setdefault(tag.document_id, []).append(tag)
 
+    targets = _targets()
+    # Targets that are no longer classified (e.g. multi-topic initiative
+    # lists) must not keep their old classifier tags.
+    decision_ids = {t["decision"].pk for t in targets if t["decision"]}
+    document_ids = {t["document"].pk for t in targets if t["document"]}
+    stale = (
+        (Q(decision__isnull=False, is_manual=False) & ~Q(decision_id__in=decision_ids))
+        | (Q(document__isnull=False, is_manual=False) & ~Q(document_id__in=document_ids))
+    )
+    removed, _ = Tag.objects.filter(stale).delete()
+    stats["stale_removed"] = removed
+
     pending: list[dict] = []
-    for target in _targets():
+    for target in targets:
         key = target["decision"].pk if target["decision"] else target["document"].pk
         existing = (
             tagged_by_decision.get(key) if target["decision"] else tagged_by_document.get(key)

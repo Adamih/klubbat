@@ -1,0 +1,501 @@
+{
+ "seed": 2026,
+ "sample_size": 55,
+ "targets": [
+  {
+   "key": "decision:3028",
+   "kind": "decision",
+   "topic": "boende",
+   "confidence": 0.52,
+   "title": "Svar på motion om bostadskö för äldre från Jonas Segersam (KD)",
+   "text": "Kommunfullmäktige beslutar - 1\\. att bordlägga ärendet.",
+   "stratum": "low"
+  },
+  {
+   "key": "document:24",
+   "kind": "document",
+   "topic": "boende",
+   "confidence": 0.54,
+   "title": "24. Interpellation om badhus i Gottsunda",
+   "text": "## Interpellation om badhus i Gottsunda\n\nUnder 2022 genomfördes en badutredning som visade att Gottsundabadet bedöms klara av att vara i drift fram till cirka år 2030 för att därefter behöva ersättas med en ny. Utredningen rekommenderar att Gottsundabadet ersätts med en \"Lokal mindre anläggning-extra\".\n\nSpecifikationen av lokal anläggning \"extra\", är att det är en traditionell badanläggning som ko",
+   "stratum": "low"
+  },
+  {
+   "key": "document:73",
+   "kind": "document",
+   "topic": "boende",
+   "confidence": 0.54,
+   "title": "33. Interpellation om badhus i Gottsunda",
+   "text": "# Interpellation om badhus i Gottsunda\n\nUnder 2022 genomfördes en badutredning som visade att Gottsundabadet bedöms klara av att vara i drift fram till cirka år 2030 för att därefter behöva ersättas med en ny. Utredningen rekommenderar att Gottsundabadet ersätts med en \"Lokal mindre anläggning-extra\".\n\nSpecifikationen av lokal anläggning \"extra\", är att det är en traditionell badanläggning som kom",
+   "stratum": "random"
+  },
+  {
+   "key": "decision:3005",
+   "kind": "decision",
+   "topic": "boende",
+   "confidence": 0.57,
+   "title": "Svar på motion om bostadskö för äldre från Jonas Segersam (KD)",
+   "text": "Kommunfullmäktige beslutar - 1\\. att besvara motionen med föredragningen i ärendet.",
+   "stratum": "random"
+  },
+  {
+   "key": "decision:2787",
+   "kind": "decision",
+   "topic": "boende",
+   "confidence": 0.71,
+   "title": "Program och handlingsplan för bostadsförsörjningen, Bostad för alla",
+   "text": "Kommunfullmäktige beslutar - 1\\. att anta Bostad för alla, program för bostadsförsörjningen med tillhörande handlingsplan, samt - 2\\. att Bostad för alla, program och handlingsplan för bostadsförsörjningen 2021– 2024 upphör att gälla.",
+   "stratum": "random"
+  },
+  {
+   "key": "decision:2856",
+   "kind": "decision",
+   "topic": "ekonomi",
+   "confidence": 0.45,
+   "title": "Internbankens externa låneram 2026",
+   "text": "Kommunfullmäktige beslutar - 1\\. att under 2026 bemyndiga kommunstyrelsen att omsätta befintliga lån och uppta nya lån inom en totalt högsta låneram om 25 000 miljoner kronor.",
+   "stratum": "low"
+  },
+  {
+   "key": "decision:2925",
+   "kind": "decision",
+   "topic": "ekonomi",
+   "confidence": 0.46,
+   "title": "Revidering av taxa för prövning och tillsyn enligt alkohollagen",
+   "text": "Kommunfullmäktige beslutar 1. att anta reviderad taxa för prövning och tillsyn enligt alkohollagen i enlighet med miljö och hälsoskyddsnämndens förslag i ärendets bilaga 1, med följande justering: avgiften för tillståndsprövning är densamma som avgiften för tillsyn, 4000 kr, samt 2. att taxan ska börja gälla från och med 1 juni 2025.",
+   "stratum": "low"
+  },
+  {
+   "key": "document:243",
+   "kind": "document",
+   "topic": "ekonomi",
+   "confidence": 0.5,
+   "title": "31. Interpellation om Stadsteaterns underskott",
+   "text": "# Stadsteaterns underskott\n\nUppsala Stadsteater har en omsättning på i runda slängar 120 miljoner kronor per år (siffror från årsredovisning 2023). Av dessa kommer ca 80 miljoner kronor som underskottstäckning från kommunen, 20 miljoner som bidrag från staten (och några småpengar från Region Uppsala), och 20 miljoner är intäkter huvudsakligen biljettintäkter.\n\nVerksamheten täcks alltså med i runt ",
+   "stratum": "random"
+  },
+  {
+   "key": "decision:2928",
+   "kind": "decision",
+   "topic": "ekonomi",
+   "confidence": 0.51,
+   "title": "Nya parkeringstaxor i Uppsala",
+   "text": "Kommunfullmäktige beslutar 1. att återremittera ärendet för att utreda ett system med differentierad taxa baserat på tillgång till boendeparkering i aktuellt område, för att därefter införa anpassade boendeparkeringstaxor.",
+   "stratum": "random"
+  },
+  {
+   "key": "decision:2789",
+   "kind": "decision",
+   "topic": "ekonomi",
+   "confidence": 0.62,
+   "title": "Tillägg av taxor och avgifter inom idrotts- och fritidsnämnden 2025",
+   "text": "Kommunfullmäktige beslutar - 1\\. att fastställa idrotts- och fritidsnämndens förslag om tillägg till taxor och avgifter för 2025 med tre avgifter; BMX bana, liten ishall och mediakub, enligt bilaga 1.",
+   "stratum": "random"
+  },
+  {
+   "key": "document:175",
+   "kind": "document",
+   "topic": "kultur",
+   "confidence": 0.35,
+   "title": "10. Interpellation om Saturnus",
+   "text": "# Saturnus i Uppsala\n\nUppsala kommun präglas av våra universitet, och särskilt Uppsala universitet som funnits i staden sedan snart 550 år. Många namnkunniga forskare har satt sin prägel på stadsbilden – Anders Celsius ihågkommes genom Celsiushuset på gågatan och sin grav i Gamla Uppsala kyrka, Carl von Linné genom Linnéträdgården, Linnés Hammarby och Linnés Sävja och Olof Rudbeck genom Anatomiska",
+   "stratum": "low"
+  },
+  {
+   "key": "document:149",
+   "kind": "document",
+   "topic": "kultur",
+   "confidence": 0.35,
+   "title": "21. Interpellation om Saturnus",
+   "text": "# Saturnus i Uppsala\n\nUppsala kommun präglas av våra universitet, och särskilt Uppsala universitet som funnits i staden sedan snart 550 år. Många namnkunniga forskare har satt sin prägel på stadsbilden – Anders Celsius ihågkommes genom Celsiushuset på gågatan och sin grav i Gamla Uppsala kyrka, Carl von Linné genom Linnéträdgården, Linnés Hammarby och Linnés Sävja och Olof Rudbeck genom Anatomiska",
+   "stratum": "low"
+  },
+  {
+   "key": "document:426",
+   "kind": "document",
+   "topic": "kultur",
+   "confidence": 0.59,
+   "title": "16. Interpellation om Sommarteatern från Mattias Johansson (C)",
+   "text": "# Interpellation av Mattias Johansson (C) om att alternera spelplatser för Sommarteatern\n\nFö r att ö ka tillga ngen till kulturutbud under sömmaren fö r barn öch unga har kulturna mnden\n\n- (KTN) sedan 2021 gett Uppsala stadsteater uppdraget att anördna köstnadsfri sömmarteater. Ersa ttningen fö r uppdraget har sedan starten ö kat fra n 900 000 kr till 1 900 000 kr i a rets budget.\n\nUnder de a r up",
+   "stratum": "random"
+  },
+  {
+   "key": "document:39",
+   "kind": "document",
+   "topic": "kultur",
+   "confidence": 0.54,
+   "title": "36. Interpellation om extrapengar till kulturhuvudstadsåret",
+   "text": "# Interpellation om budgetmedel avsatta för\n\n# Kulturhuvudstadsåret 2029\n\nTrots långa och många förberedelser står det nu klart att Uppsala kommuns planer på att bli Europas Kulturhuvudstad 2029 gått om intet. Den 6 december tilldelades istället Kiruna kommun arrangemanget.\n\nBeskedet ändrar förutsättningarna för några specifika anslag som fullmäktige beslutat om i Mål och budget för 2025 och 2026.",
+   "stratum": "random"
+  },
+  {
+   "key": "document:173",
+   "kind": "document",
+   "topic": "kultur",
+   "confidence": 0.54,
+   "title": "8. Interpellation om extrapengar till kulturhuvudstadsåret",
+   "text": "# Interpellation om budgetmedel avsatta för\n\n# Kulturhuvudstadsåret 2029\n\nTrots långa och många förberedelser står det nu klart att Uppsala kommuns planer på att bli Europas Kulturhuvudstad 2029 gått om intet. Den 6 december tilldelades istället Kiruna kommun arrangemanget.\n\nBeskedet ändrar förutsättningarna för några specifika anslag som fullmäktige beslutat om i Mål och budget för 2025 och 2026.",
+   "stratum": "random"
+  },
+  {
+   "key": "decision:3100",
+   "kind": "decision",
+   "topic": "miljo",
+   "confidence": 0.44,
+   "title": "Svar på motion om att pausa målet om 100 procent ekologisk mat från Jennie Claesson med flera (L)",
+   "text": "Kommunfullmäktige beslutar - 1\\. att besvara motionen med föredragning i ärendet.",
+   "stratum": "low"
+  },
+  {
+   "key": "document:205",
+   "kind": "document",
+   "topic": "miljo",
+   "confidence": 0.47,
+   "title": "39. Interpellation om matsvinn i skolan",
+   "text": "# Interpellation om matsvinn i skolan\n\nI dagens UNT, 16/4 2025, kan man läsa om hur skolans satsning på en\n\n\"klimatvecka\" blivit ett formidabelt fiasko, i form av stora ökningar av matsvinn och hungriga elever som kommer hem till föräldrarna utan att ha ätit sig mätta på den helvegetariska skolmaten som serverades.\n\nKommunen verkar nu, enligt artikeln i UNT, eventuellt backa från att genomföra fle",
+   "stratum": "low"
+  },
+  {
+   "key": "decision:3041",
+   "kind": "decision",
+   "topic": "miljo",
+   "confidence": 0.64,
+   "title": "Miljöprogram för Uppsala kommun",
+   "text": "Kommunfullmäktige beslutar 1. att anta förslag till Miljöprogram för Uppsala kommun i enlighet med bilaga 1, 2. att upphäva Vattenprogram för Uppsala kommun, samt 3. att upphäva Miljö- och klimatprogram.",
+   "stratum": "random"
+  },
+  {
+   "key": "decision:2824",
+   "kind": "decision",
+   "topic": "miljo",
+   "confidence": 0.62,
+   "title": "Uppföljning av program och planer 2024",
+   "text": "Kommunfullmäktige beslutar - 1\\. att uppdra till Uppsala Vatten och Avfall AB att revidera Avfallsplan – program för ett cirkulärt Uppsala utan avfall, - 2\\. att uppdra till kommunstyrelsen att revidera Energiprogram 2050, - 3\\. att uppdra till kommunstyrelsen att revidera Handlingsplan för Gottsundaområdet 2021–2023, - 4\\. att uppdra till kommunstyrelsen att revidera Åtgärdsprogram för kvävedioxi",
+   "stratum": "random"
+  },
+  {
+   "key": "decision:2936",
+   "kind": "decision",
+   "topic": "miljo",
+   "confidence": 0.59,
+   "title": "Svar på motion om fastighetsnära insamling av biologiskt och brännbart avfall från Stefan Hanna (UP)",
+   "text": "Kommunfullmäktige beslutar 1. att besvara motionen med föredragningen i ärendet.",
+   "stratum": "random"
+  },
+  {
+   "key": "document:138",
+   "kind": "document",
+   "topic": "naringsliv",
+   "confidence": 0.52,
+   "title": "10. Interpellation om att fler ska gå från bidrag till egen försörjning",
+   "text": "## Interpellation om att fler ska gå från bidrag till egen\n\n**försörjning**\n\nI Uppsala kommun utbetalas betydande belopp i ekonomiskt bistånd varje år. Hälften av dem som söker bistånd gör det på grund av arbetslöshet, vilket motsvarar cirka 1 300 individer.\n\nDetta är en utmaning som påverkar inte bara de drabbade individerna och hushållen, utan även kommunens budget och den sociala hållbarheten.\n",
+   "stratum": "low"
+  },
+  {
+   "key": "document:23",
+   "kind": "document",
+   "topic": "naringsliv",
+   "confidence": 0.52,
+   "title": "23. Interpellation om att fler ska gå från bidrag till egen försörjning",
+   "text": "## Interpellation om att fler ska gå från bidrag till egen\n\n**försörjning**\n\nI Uppsala kommun utbetalas betydande belopp i ekonomiskt bistånd varje år. Hälften av dem som söker bistånd gör det på grund av arbetslöshet, vilket motsvarar cirka 1 300 individer.\n\nDetta är en utmaning som påverkar inte bara de drabbade individerna och hushållen, utan även kommunens budget och den sociala hållbarheten.\n",
+   "stratum": "low"
+  },
+  {
+   "key": "document:299",
+   "kind": "document",
+   "topic": "naringsliv",
+   "confidence": 0.57,
+   "title": "17. Interpellation om ekonomisk hållbarhet från Stefan Hanna (UP)",
+   "text": "**Interpellation om ekonomisk hållbarhet i Uppsala**\n\nArbetslösheten stiger. Kompetensen som efterfrågas kan inte mötas i tillräcklig grad av dem som finns tillgängliga på arbetsmarknaden. Kompetensinvandringen är begränsad. Ett upplevt otryggt Sverige gör det inte enklare att rekrytera experter. Inom många infrastrukturområdet är underhållsskulderna höga och behov av nyinvesteringar stort. Barnaf",
+   "stratum": "random"
+  },
+  {
+   "key": "document:71",
+   "kind": "document",
+   "topic": "naringsliv",
+   "confidence": 0.52,
+   "title": "32. Interpellation om att fler ska gå från bidrag till egen försörjning",
+   "text": "# Interpellation om att fler ska gå från bidrag till egen\n\n**försörjning**\n\nI Uppsala kommun utbetalas betydande belopp i ekonomiskt bistånd varje år. Hälften av dem som söker bistånd gör det på grund av arbetslöshet, vilket motsvarar cirka 1 300 individer.\n\nDetta är en utmaning som påverkar inte bara de drabbade individerna och hushållen, utan även kommunens budget och den sociala hållbarheten.\n\n",
+   "stratum": "random"
+  },
+  {
+   "key": "document:336",
+   "kind": "document",
+   "topic": "naringsliv",
+   "confidence": 0.57,
+   "title": "28. Interpellation om ekonomisk hållbarhet",
+   "text": "**Interpellation om ekonomisk hållbarhet i Uppsala**\n\nArbetslösheten stiger. Kompetensen som efterfrågas kan inte mötas i tillräcklig grad av dem som finns tillgängliga på arbetsmarknaden. Kompetensinvandringen är begränsad. Ett upplevt otryggt Sverige gör det inte enklare att rekrytera experter. Inom många infrastrukturområdet är underhållsskulderna höga och behov av nyinvesteringar stort. Barnaf",
+   "stratum": "random"
+  },
+  {
+   "key": "document:282",
+   "kind": "document",
+   "topic": "omsorg",
+   "confidence": 0.45,
+   "title": "27. Interpellation om språkförmåga hos kommunens omsorgspersonal från Evelina Solem (KD)",
+   "text": "# Interpellation om språkförmåga hos kommunens Omsorgspersonal?\n\nAtt Uppsala kommun har problem med att en stor andel medarbetare som inte kan svenska inom vård-och omsorgsförvaltningen. Kommunen gör mycket för att stärka språkförmåga, men ändå har vi stora utmaningar. Detta går även och se i den utredningen som Vård- och omsorgsförvaltningen gjorde på de fyra särskilda boenden, som Äldrenämnden b",
+   "stratum": "low"
+  },
+  {
+   "key": "decision:3101",
+   "kind": "decision",
+   "topic": "omsorg",
+   "confidence": 0.49,
+   "title": "Svar på motion om att inrätta ett härbärge för par i Uppsala från Jennie Claesson (L) m.fl.",
+   "text": "Kommunfullmäktige beslutar - 1\\. att bifalla motionen.",
+   "stratum": "low"
+  },
+  {
+   "key": "decision:3018",
+   "kind": "decision",
+   "topic": "omsorg",
+   "confidence": 0.56,
+   "title": "Svar på motion om att inrätta ett härbärge för kvinnor i Uppsala från Jennie Claesson (L)",
+   "text": "Kommunfullmäktige beslutar - 1\\. att bifalla motionens första att-sats, - 2\\. att socialnämnden ges i uppdrag att genomföra en särskild och fördjupad behovskartläggning av kvinnors hemlöshet i Uppsala kommun, - 3\\. att resultatet redovisas för socialnämnden och kommunstyrelsen senast den 31 december 2025, och - 4\\. att därmed anse motionen besvarad.",
+   "stratum": "random"
+  },
+  {
+   "key": "decision:3122",
+   "kind": "decision",
+   "topic": "omsorg",
+   "confidence": 0.56,
+   "title": "Svar på motion om bättre stöd till personer med psykisk ohälsa och drogproblematik från Stefan Hanna (UP)",
+   "text": "Kommunfullmäktige beslutar 1. att besvara motionen med föredragningen i ärendet.",
+   "stratum": "random"
+  },
+  {
+   "key": "document:305",
+   "kind": "document",
+   "topic": "omsorg",
+   "confidence": 0.66,
+   "title": "20. Interpellation om utomhusmöjligheter för äldre på särskilda boenden från Evelina Solem (KD)",
+   "text": "# Utomhusvistelse för de äldre på särskilda boenden\n\nAtt vistas utomhus kan anses som en självklarhet för de flesta i vårt samhälle, att kunna sätta sig på sin balkong/uteplats eller på en parkbänk i närheten av sitt hem. Kanske gå på en promenad genom en närliggande park eller bara runt kvarteret. Att vistas utomhus och få möjligheten att röra på sig, har många positiva hälsoeffekter. Men när de ",
+   "stratum": "random"
+  },
+  {
+   "key": "decision:2809",
+   "kind": "decision",
+   "topic": "organisation",
+   "confidence": 0.36,
+   "title": "Interpellation om Saturnus från Jonas Segersam (KD)",
+   "text": "Kommunfullmäktige beslutar - 1\\. att bordlägga ärendet.",
+   "stratum": "low"
+  },
+  {
+   "key": "decision:2836",
+   "kind": "decision",
+   "topic": "organisation",
+   "confidence": 0.36,
+   "title": "Svar på motion om att flagga för Uppsala istället för EU från Wouter Voortman (SD)",
+   "text": "Kommunfullmäktige beslutar - 1\\. att bordlägga ärendet.",
+   "stratum": "low"
+  },
+  {
+   "key": "decision:2831",
+   "kind": "decision",
+   "topic": "organisation",
+   "confidence": 0.51,
+   "title": "Svar på motion om ljudet i KF-salen från Kent Kumpula (SD)",
+   "text": "Kommunfullmäktige beslutar - 1\\. att bifalla motionen.",
+   "stratum": "random"
+  },
+  {
+   "key": "decision:2944",
+   "kind": "decision",
+   "topic": "organisation",
+   "confidence": 0.68,
+   "title": "Inlämnade motioner till kommunfullmäktige 28 april 2025",
+   "text": "Kommunfullmäktige beslutar 1. att inlämnade motioner överlämnas till kommunstyrelsen för beredning.",
+   "stratum": "random"
+  },
+  {
+   "key": "decision:2907",
+   "kind": "decision",
+   "topic": "organisation",
+   "confidence": 0.44,
+   "title": "Interpellation om ett liberaliserat strandskydd från John Manders (M)",
+   "text": "Kommunfullmäktige beslutar - 1\\. att bordlägga ärendet.",
+   "stratum": "random"
+  },
+  {
+   "key": "document:143",
+   "kind": "document",
+   "topic": "raddning",
+   "confidence": 0.37,
+   "title": "15. Interpellation om politiskt våld",
+   "text": "# Stoppa det vänsterextrema våldet\n\nLördagen den 30/11 blev den borgerliga studentföreningen Heimdals lokaler återigen vandaliserade. Sedan i våras har upprepade attacker förekommit. Sammanlagt har låset blivit igenlimmat 3 gånger, och nedklottring har skett vid minst 6 tillfällen. Den senaste gången skedde endast några timmar efter att UNT rapporterat om vandaliseringen av föreningens lokaler. At",
+   "stratum": "low"
+  },
+  {
+   "key": "document:234",
+   "kind": "document",
+   "topic": "raddning",
+   "confidence": 0.37,
+   "title": "22. Interpellation om politiskt våld",
+   "text": "# Stoppa det vänsterextrema våldet\n\nLördagen den 30/11 blev den borgerliga studentföreningen Heimdals lokaler återigen vandaliserade. Sedan i våras har upprepade attacker förekommit. Sammanlagt har låset blivit igenlimmat 3 gånger, och nedklottring har skett vid minst 6 tillfällen. Den senaste gången skedde endast några timmar efter att UNT rapporterat om vandaliseringen av föreningens lokaler. At",
+   "stratum": "low"
+  },
+  {
+   "key": "decision:3023",
+   "kind": "decision",
+   "topic": "raddning",
+   "confidence": 0.66,
+   "title": "Svar på motion om brandstationer som trygghetspunkter från Christian Hermanson (KD)",
+   "text": "Kommunfullmäktige beslutar - 1\\. att kommunstyrelsen får i uppdrag att utforma en modell för fungerande trygghetspunkter för kommunens invånare, där också brandstationerna kan användas för detta syfte.",
+   "stratum": "random"
+  },
+  {
+   "key": "document:148",
+   "kind": "document",
+   "topic": "raddning",
+   "confidence": 0.57,
+   "title": "20. Interpellation om kvinnojourernas finansiering",
+   "text": "# Interpellation om kvinnojourernas finansiering\n\nVåld i nära relationer är ett av de största folkhälsohoten i dagens samhälle. Behovet av stöd och hjälp är konstant, vilket kräver flera oberoende organisationer och insatser som kan möta dessa behov. Många barn som bevittnar och upplever våld blir själva utsatta, vilket innebär stora risker för både deras fysiska och psykiska hälsa Att minska våld",
+   "stratum": "random"
+  },
+  {
+   "key": "decision:2929",
+   "kind": "decision",
+   "topic": "raddning",
+   "confidence": 0.54,
+   "title": "Svar på motion om att förebygga kriminalitet bland unga från Jonas Segersam (KD)",
+   "text": "Kommunfullmäktige beslutar 1. att besvara motionen med föredragningen i ärendet.",
+   "stratum": "random"
+  },
+  {
+   "key": "decision:3074",
+   "kind": "decision",
+   "topic": "skola",
+   "confidence": 0.46,
+   "title": "Svar på motion om valfrihet i kosthållningen i skolan från Kent Kumpula (SD)",
+   "text": "Kommunfullmäktige beslutar 1. att avslå motionen.",
+   "stratum": "low"
+  },
+  {
+   "key": "decision:2911",
+   "kind": "decision",
+   "topic": "skola",
+   "confidence": 0.48,
+   "title": "Interpellation om brandskyddet i Uppsalas skolor från Jennie Claesson (L)",
+   "text": "Kommunfullmäktige beslutar - 1\\. att bordlägga ärendet.",
+   "stratum": "low"
+  },
+  {
+   "key": "document:145",
+   "kind": "document",
+   "topic": "skola",
+   "confidence": 0.66,
+   "title": "17. Interpellation om elevhälsa",
+   "text": "## Interpellation om elevhälsan\n\nEnligt skollagen (2010:800, kap. 2 § 25) ska alla elever i grundskolan och gymnasieskolan ha tillgång till elevhälsa. Elevhälsan ska omfatta medicinska, psykologiska, psykosociala och specialpedagogiska insatser och syfta till att stödja elevernas utveckling mot utbildningens mål. En stark och fungerande elevhälsa är avgörande för att säkerställa att alla elever ge",
+   "stratum": "random"
+  },
+  {
+   "key": "document:150",
+   "kind": "document",
+   "topic": "skola",
+   "confidence": 0.57,
+   "title": "22. Interpellation om brandskyddet i Uppsalas skolor",
+   "text": "# Interpellation om brandskyddet i Uppsalas skolor\n\nEtt fungerande och välorganiserat brandskydd i våra skolor är en absolut grundförutsättning för att garantera tryggheten för elever, lärare och övrig personal. Skolan ska vara en plats där barn och unga kan fokusera på sitt lärande utan att behöva oroa sig för sin säkerhet. Vid en brand kan sekunder vara avgörande – därför måste brandskyddet inte",
+   "stratum": "random"
+  },
+  {
+   "key": "decision:3105",
+   "kind": "decision",
+   "topic": "skola",
+   "confidence": 0.54,
+   "title": "Svar på motion om fler gymnasieinriktningar för elever med autismspektrumtillstånd Therez Almerfors (M) m.fl.",
+   "text": "Kommunfullmäktige beslutar - 1\\. att bifalla motionen.",
+   "stratum": "random"
+  },
+  {
+   "key": "decision:2790",
+   "kind": "decision",
+   "topic": "stadsbyggnad",
+   "confidence": 0.32,
+   "title": "Svar på motion om att flagga för Uppsala i stället för EU från Wouter Voortman (SD)",
+   "text": "Kommunfullmäktige beslutar - 1\\. att avslå motionen.",
+   "stratum": "low"
+  },
+  {
+   "key": "document:44",
+   "kind": "document",
+   "topic": "stadsbyggnad",
+   "confidence": 0.37,
+   "title": "38.1. Svar interpellation om Saturnus i Uppsala",
+   "text": "Kommunstyrelsen Datum: Diarienummer:\n\n**Interpellationssvar**\n\n2024-02-19\n\n# Svar på interpellation om Saturnus i\n\n# Uppsala\n\n**Vad har kommunen gjort för att få en modell av Saturnus till Uppsala?**\n\nTidigare har Saturnus uppmärksammats i Uppsala genom en modell av en av dess månar vid Celsiushuset, men själva planeten har ännu inte fått en plats här.\n\nUppsala kommun har en stark tradition av sam",
+   "stratum": "low"
+  },
+  {
+   "key": "document:172",
+   "kind": "document",
+   "topic": "stadsbyggnad",
+   "confidence": 0.66,
+   "title": "7. Interpellation om ett liberaliserat strandskydd",
+   "text": "# Interpellation från John Manders (M) om ett liberaliserat strandskydd\n\nRegeringen meddelande nyligen att reglerna för strandskydd ska uppdateras och liberaliseras för att förenkla för markägare att bruka sin mark. Detta i ljuset av att dagens regler är långtgående och försvårar eller rentav omöjliggör bebyggelse till följd av vattendrag där det är tveksamt om strandskyddets syfte uppfylls.\n\nEtt ",
+   "stratum": "random"
+  },
+  {
+   "key": "decision:3142",
+   "kind": "decision",
+   "topic": "stadsbyggnad",
+   "confidence": 0.6,
+   "title": "Svar på motion om att flytta kommunala verksamheter från stad till landsbygd från Kent Kumpula (SD)",
+   "text": "Kommunfullmäktige beslutar - 1\\. att besvara motionen enligt föredragningen.",
+   "stratum": "random"
+  },
+  {
+   "key": "decision:2784",
+   "kind": "decision",
+   "topic": "stadsbyggnad",
+   "confidence": 0.65,
+   "title": "Antagande av detaljplan för kapacitetsstark kollektivtrafik, delsträcka C",
+   "text": "Kommunfullmäktige beslutar - 1\\. att anta Detaljplan för kapacitetsstark kollektivtrafik, delsträcka C, enligt ärendets bilaga 2 och 3.",
+   "stratum": "random"
+  },
+  {
+   "key": "decision:3046",
+   "kind": "decision",
+   "topic": "trafik",
+   "confidence": 0.46,
+   "title": "Svar på motion om avgiftsfri parkering på kommunal parkering vid idrott- och fritidsanläggningar från Edvin Alam (M) och Mats Gyllander (M)",
+   "text": "Kommunfullmäktige beslutar 1. att avslå motionen.",
+   "stratum": "low"
+  },
+  {
+   "key": "decision:2954",
+   "kind": "decision",
+   "topic": "trafik",
+   "confidence": 0.5,
+   "title": "Svar på motion om reglering av uthyrningen av elsparkcyklar från Mattias Jansson (SD)",
+   "text": "Kommunfullmäktige beslutar 1. att besvara motionen med föredragningen i ärendet.",
+   "stratum": "low"
+  },
+  {
+   "key": "document:101",
+   "kind": "document",
+   "topic": "trafik",
+   "confidence": 0.62,
+   "title": "21. Interpellation till Erik Pelling om bro för spårväg eller superbussar",
+   "text": "# Interpellation om bro för spårväg eller superbussar\n\nLokaltrafik med hög kapacitet med superbussar, så kallad BRT, hade inneburit många fördelar jämfört med spårvagnar.\n\nEnergi- och CO2/personkilometer för spårvagn är ungefär dubbelt så hög som för BRT (Referens till EU Energy Directive och Paris agreement to reduce CO2), och skillnaden skulle troligtvis bli ännu större om BRT-alternativet använ",
+   "stratum": "random"
+  },
+  {
+   "key": "document:144",
+   "kind": "document",
+   "topic": "trafik",
+   "confidence": 0.64,
+   "title": "16. Interpellation angående vägunderhåll",
+   "text": "## Interpellation angående vägunderhåll\n\nÄ ndama lsenliga gator och va gar a r en fo rutsa ttning fo r att medborgarnas vardag ska fungera och kommunens o vriga verksamhet utfo ras enligt plan. Bristande underha ll av gator och va gar medfo r da rmed risk att kommunen inte fullgo r sitt uppdrag, ba de ur ett ekonomiskt- och ett verksamhetsperspektiv. Da rfo r a r det viktigt att kommunen sa kersta",
+   "stratum": "random"
+  },
+  {
+   "key": "document:102",
+   "kind": "document",
+   "topic": "trafik",
+   "confidence": 0.69,
+   "title": "21.1 Svar på interpellation till Erik Pelling om bro för spårväg eller superbussar",
+   "text": "Kommunstyrelsen Datum: Diarienummer:\n\n**Interpellationssvar**\n\n2025-12-10\n\n# Svar på interpellation om bro för\n\n**spårväg eller superbussar**\n\nKent Kumpula (SD) har den 22 oktober 2025 inkommit med ovanrubricerad interpellation. Nedan besvarar jag de konkreta frågorna.\n\n***Hur mycket kortare hade bron kunnat byggas, om alternativet för kapacitetsstark kollektivtrafik hade varit BRT i stället för s",
+   "stratum": "random"
+  }
+ ]
+}
