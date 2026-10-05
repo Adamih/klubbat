@@ -16,14 +16,6 @@
                 {% endfor %}
             </select>
         </label>
-        <label>Möte
-            <select name="mote">
-                <option value="">Alla</option>
-                {% for m in meetings %}
-                <option value="{{ m.pk }}" {% if selected.mote == m.pk %}selected{% endif %}>{{ m.date|date:"Y-m-d" }} — {{ m.body.name }}</option>
-                {% endfor %}
-            </select>
-        </label>
         <label>Myndighet
             <select name="myndighet">
                 <option value="">Alla</option>

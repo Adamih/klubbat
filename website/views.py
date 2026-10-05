@@ -214,7 +214,6 @@ def _meeting_info_for_documents(doc_ids):
 def search_view(request):
     query = request.GET.get("q", "").strip()
     doc_type = request.GET.get("typ", "").strip() or None
-    meeting_id = _int_param(request, "mote")
     authority_id = _int_param(request, "myndighet")
     body_id = _int_param(request, "organ")
     date_from = _date_param(request, "fran")
@@ -234,7 +233,6 @@ def search_view(request):
         return service.search(
             match_expr,
             doc_type=doc_type,
-            meeting_id=meeting_id,
             authority_id=authority_id,
             body_id=body_id,
             date_from=date_from,
@@ -268,6 +266,7 @@ def search_view(request):
 
     filter_params = request.GET.copy()
     filter_params.pop("sida", None)
+    filter_params.pop("mote", None)
 
     return render(
         request,
@@ -284,7 +283,6 @@ def search_view(request):
             "topics": Topic.objects.all(),
             "selected": {
                 "typ": doc_type,
-                "mote": meeting_id,
                 "myndighet": authority_id,
                 "organ": body_id,
                 "fran": date_from,
@@ -292,7 +290,6 @@ def search_view(request):
                 "rostning": has_votes,
                 "amne": topic_slug,
             },
-            "meetings": Meeting.objects.order_by("-date")[:200],
             "authorities": Authority.objects.all(),
             "bodies": Body.objects.select_related("authority").all(),
         },
