@@ -43,10 +43,9 @@
     {% for item in votes %}
     <li class="vote-row">
         <p class="meta">
-            {% if item.meeting %}<a href="{% url 'website:meeting-detail' item.meeting.pk %}">{{ item.meeting.date|date:"Y-m-d" }}</a>{% endif %}
-            {% if item.vote.agenda_item %} · <a href="{% url 'website:agenda-item' item.vote.agenda_item.pk %}">{% if item.vote.agenda_item.agenda_number %}§{{ item.vote.agenda_item.agenda_number }} {% endif %}{{ item.vote.agenda_item.title|truncatechars:90 }}</a>{% endif %}
+            {% if item.meeting %}<a href="{% url 'website:meeting-detail' item.meeting.pk %}">{{ item.meeting.date|date:"Y-m-d" }}</a> · {% endif %}{{ item.document.title }}
         </p>
-        <a class="doc-link" href="{% url 'website:document-detail' item.document.pk %}#vote-{{ item.vote.pk }}">{{ item.document.title }}</a>
+        <a class="doc-link" href="{% url 'website:document-detail' item.document.pk %}#vote-{{ item.vote.pk }}">{% if item.vote.printed_agenda_number is not None %}§{{ item.vote.printed_agenda_number }} · {% endif %}{{ item.subject|default:item.document.title }}</a>
         <span class="vote-tally">{{ item.tally_text|default:"röstlängd saknas" }}</span>
         {% if item.type %}<span class="vote-type vote-type-{{ item.type.code }}">{{ item.type.label }}</span>{% endif %}
         {% if item.strip %}
