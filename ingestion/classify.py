@@ -3,10 +3,10 @@ initiative documents.
 
 The classifier is a nearest-centroid over Swedish sentence embeddings — no
 gradient training. Each topic's centroid is anchored on its label, description
-and seed phrases (below), then refined by hand-tagged items (is_manual tags in
-admin are the training seed and are never overwritten). Assignments are stamped
-with CLASSIFIER_VERSION: targets with a current tag are skipped, so incremental
-runs only embed new items and a version bump re-tags everything. The diarienummer
+and seed phrases (below), then refined by independent labelled examples.
+Assignments are stamped with CLASSIFIER_VERSION and the example-set fingerprint:
+unchanged assignments are skipped, while example edits re-tag all targets on
+the next run. The diarienummer
 prefix (e.g. PBN = plan-och-byggnadsnämnden) is used as a small prior.
 """
 
@@ -14,10 +14,12 @@ from __future__ import annotations
 
 import logging
 import re
+import hashlib
+import json
 
 log = logging.getLogger(__name__)
 
-CLASSIFIER_VERSION = "topic-centroid-v2"
+CLASSIFIER_VERSION = "topic-centroid-v3"
 
 # KBLab's Swedish sentence-BERT (National Library of Sweden).
 EMBEDDING_MODEL = "KBLab/sentence-bert-swedish-cased"
@@ -196,34 +198,33 @@ def _ensure_topics() -> dict[str, "Topic"]:
     return by_slug
 
 
-def _manual_texts() -> dict[str, list[str]]:
-    """Hand-tagged targets per topic slug: their texts are the training seed."""
-    from core.models import Decision, Document, Tag
+def _example_texts() -> dict[str, list[str]]:
+    """Saved example text per topic, independent of the source's lifecycle."""
+    from core.models import LabelledExample
 
     texts: dict[str, list[str]] = {}
-    for tag in (
-        Tag.objects.filter(is_manual=True)
-        .select_related("decision", "document", "topic")
-    ):
-        if tag.decision is not None:
-            body = f"{tag.decision.printed_agenda_title}\n{tag.decision.decision_text}"
-        elif tag.document is not None:
-            body = tag.document.title
-        else:
-            continue
-        texts.setdefault(tag.topic.slug, []).append(body[:TEXT_CAP])
+    slugs = [topic["slug"] for topic in TOPIC_LABEL_SET]
+    for example in LabelledExample.objects.filter(topic__slug__in=slugs).select_related("topic"):
+        body = f"{example.title}\n{example.text}"
+        texts.setdefault(example.topic.slug, []).append(body[:TEXT_CAP])
     return texts
 
 
-def _build_centroids(manual_texts: dict[str, list[str]]) -> dict[str, list[float]]:
-    """Normalized centroid per topic: label + description + seeds + manual items."""
+def _classification_version(example_texts: dict[str, list[str]]) -> str:
+    payload = json.dumps(example_texts, sort_keys=True, ensure_ascii=False)
+    fingerprint = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+    return f"{CLASSIFIER_VERSION}:{fingerprint}"
+
+
+def _build_centroids(example_texts: dict[str, list[str]]) -> dict[str, list[float]]:
+    """Normalized centroid per topic: label + description + seeds + examples."""
     texts: list[str] = []
     owners: list[str] = []
     for topic in TOPIC_LABEL_SET:
         for phrase in [topic["label"], topic["description"], *topic["seeds"]]:
             texts.append(phrase)
             owners.append(topic["slug"])
-    for slug, items in manual_texts.items():
+    for slug, items in example_texts.items():
         for item in items:
             texts.append(item)
             owners.append(slug)
@@ -268,19 +269,21 @@ def _targets() -> list[dict]:
 def classify_content(*, run, force: bool = False) -> dict:
     """Tag untagged decisions/initiatives with their top policy area.
 
-    Manual tags are protected and seed the centroids; targets already carrying
-    a tag of the current classifier version are skipped unless force=True.
+    Independent examples seed the centroids. Targets already carrying the
+    current classifier/example-set stamp are skipped unless force=True.
     Embedding is one batch; the DB writes are short transactions.
     """
     from django.db import transaction
 
-    from core.models import Decision, Document, Q, Tag
+    from core.models import Q, Tag
 
     topics = _ensure_topics()
     slugs = set(topics)
-    stats = {"topics": len(slugs), "tagged": 0, "skipped": 0, "protected": 0, "failures": 0}
+    example_texts = _example_texts()
+    classifier_version = _classification_version(example_texts)
+    stats = {"topics": len(slugs), "tagged": 0, "skipped": 0, "failures": 0}
     try:
-        centroids = _build_centroids(_manual_texts())
+        centroids = _build_centroids(example_texts)
     except Exception as exc:  # noqa: BLE001 - a failed model load must not abort the run
         log.error("Classifier setup failed: %s", exc)
         run.failures += 1
@@ -301,8 +304,8 @@ def classify_content(*, run, force: bool = False) -> dict:
     decision_ids = {t["decision"].pk for t in targets if t["decision"]}
     document_ids = {t["document"].pk for t in targets if t["document"]}
     stale = (
-        (Q(decision__isnull=False, is_manual=False) & ~Q(decision_id__in=decision_ids))
-        | (Q(document__isnull=False, is_manual=False) & ~Q(document_id__in=document_ids))
+        (Q(decision__isnull=False) & ~Q(decision_id__in=decision_ids))
+        | (Q(document__isnull=False) & ~Q(document_id__in=document_ids))
     )
     removed, _ = Tag.objects.filter(stale).delete()
     stats["stale_removed"] = removed
@@ -313,10 +316,7 @@ def classify_content(*, run, force: bool = False) -> dict:
         existing = (
             tagged_by_decision.get(key) if target["decision"] else tagged_by_document.get(key)
         ) or []
-        if any(tag.is_manual for tag in existing):
-            stats["protected"] += 1
-            continue
-        if not force and any(tag.classifier_version == CLASSIFIER_VERSION for tag in existing):
+        if not force and any(tag.classifier_version == classifier_version for tag in existing):
             stats["skipped"] += 1
             continue
         pending.append(target)
@@ -333,19 +333,19 @@ def classify_content(*, run, force: bool = False) -> dict:
             confidence = min(1.0, max(0.0, scores[top_slug]))
             with transaction.atomic():
                 if target["decision"] is not None:
-                    Tag.objects.filter(decision=target["decision"], is_manual=False).delete()
+                    Tag.objects.filter(decision=target["decision"]).delete()
                     Tag.objects.create(
                         decision=target["decision"], topic=topics[top_slug],
-                        confidence=confidence, classifier_version=CLASSIFIER_VERSION,
+                        confidence=confidence, classifier_version=classifier_version,
                     )
                 else:
-                    Tag.objects.filter(document=target["document"], is_manual=False).delete()
+                    Tag.objects.filter(document=target["document"]).delete()
                     Tag.objects.create(
                         document=target["document"], topic=topics[top_slug],
-                        confidence=confidence, classifier_version=CLASSIFIER_VERSION,
+                        confidence=confidence, classifier_version=classifier_version,
                     )
             stats["tagged"] += 1
     if stats["failures"]:
         run.save(update_fields=["failures"])
-    log.info("Classified %d targets (%d skipped, %d protected)", stats["tagged"], stats["skipped"], stats["protected"])
+    log.info("Classified %d targets (%d skipped)", stats["tagged"], stats["skipped"])
     return stats

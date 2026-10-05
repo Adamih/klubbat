@@ -33,7 +33,7 @@ Skapa en adminanvändare för /admin/: `uv run python manage.py createsuperuser`
 | `extract_votes [--force]` | Parsa röstningar ur IR-markdown. Idempotent; hoppar över versioner med aktuell parser-version. |
 | `extract_decisions [--force]` | Parsa beslutblock ("§ N … Beslut") ur IR-markdown. Idempotent, protokoll endast. |
 | `build_cases` | Bygg ärendesidor: länka dokument till ärenden via diarienummer och para interpellationer/frågor via titlar. Idempotent; bygger om alla länkar. Körs automatiskt i `backfill`/`ingest_recent`. |
-| `classify_content [--force]` | Ämnestaggar beslut och initiativ per policyområde (närmaste-centroid över svenska menings-embeddings). Manuella taggar i admin skyddas och tränar klassificeraren. Körs automatiskt i `backfill`/`ingest_recent`. |
+| `classify_content [--force]` | Ämnestaggar beslut och initiativ per policyområde (närmaste-centroid över svenska menings-embeddings). Märkta exempel i admin vägleder klassificeraren; ändrade exempel uppdaterar taggarna vid nästa körning. Körs automatiskt i `backfill`/`ingest_recent`. |
 | `retry_failed` | Ladda om misslyckade nedladdningar, köa om misslyckad extraktion. |
 | `rebuild_search_index` | Bygg om FTS5-index från versionernas markdown. |
 | `backup_database [--originals] [--no-derived]` | SQLite-onlinebackup (WAL-säkert) till `backups/`, inklusive `data/derived/` (IR-cachen: markdown + per-sidig text). |
@@ -95,11 +95,22 @@ med policyområden — skola, trafik, miljö, ekonomi m.fl. (fast taxonomi i
 `ingestion/classify.py`). Klassificeraren är en **närmaste-centroid över
 svenska menings-embeddings** (`KBLab/sentence-bert-swedish-cased`, Kungliga
 biblioteket): varje ämnes centroid förankras i ämnets definition + seedfraser
-och förbättras av handtaggade poster. Ingen modellträning behövs.
+och vägleder klassificeringen med sparade märkta exempel. BERT-modellen
+ändras inte; exemplen påverkar endast ämnenas centroider.
 
-- Manuella taggar (i `/admin/`, bocka i *is_manual*) skyddas alltid mot
-  omklassificering och används som träningsdata — varje korrigering gör
-  klassificeraren bättre.
+- Under **Märkta exempel** i `/admin/` sparar du titel, text och valt ämne.
+  Exemplen är fristående kopior och finns kvar när ett beslut parsas om
+  eller ett källdokument ändras eller raderas. Käll-URL sparas som referens.
+- För att utgå från verkligt material: markera en genererad tagg under
+  **Tags**, välj **Kopiera till märkta exempel**, och granska/korrigera
+  sedan ämnet på exemplet. Du kan också skapa ett exempel direkt.
+- Genererade taggar är skrivskyddade i admin och är aldrig manuella
+  överstyrningar. Alla verkliga mål klassificeras, även exemplens källor.
+  Ändrade exempel ändrar klassificerarens stämpel så att nästa
+  `classify_content` uppdaterar resultaten utan att kräva `--force`.
+- Migration `0011` kopierar tidigare manuella taggar till märkta exempel
+  innan överstyrningarna tas bort. Kör `classify_content` efter migrationen.
+  Återgång till den gamla manuella överstyrningen kräver databasbackup.
 - Taggarna bär `classifier_version` och konfidens, och kan inte skriva över
   tryckt metadata.
 - Sökningen har ett ämnesfilter (`?amne=`), och beslut-/ärendesidor visar

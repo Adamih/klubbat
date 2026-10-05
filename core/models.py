@@ -414,12 +414,31 @@ class Topic(models.Model):
         return self.label
 
 
+class LabelledExample(models.Model):
+    """Independent text snapshots used to guide topic centroids."""
+
+    title = models.CharField("Titel", max_length=400)
+    text = models.TextField("Text", blank=True)
+    topic = models.ForeignKey(Topic, on_delete=models.PROTECT, related_name="labelled_examples", verbose_name="Ämne")
+    source_url = models.URLField("Källa", max_length=2000, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["pk"]
+        verbose_name = "märkt exempel"
+        verbose_name_plural = "märkta exempel"
+
+    def __str__(self) -> str:
+        return f"{self.title} ({self.topic})"
+
+
 class Tag(models.Model):
     """One topic classification of a decision or initiative document (stage D).
 
     One tag per target, stamped with classifier_version and a confidence in
-    [0, 1]. Rows tagged by hand (is_manual) are the training seed for the
-    centroid classifier and are never overwritten by re-classification.
+    [0, 1]. Generated assignments are disposable; labelled examples live
+    independently of these rows and their parsed targets.
     """
 
     decision = models.ForeignKey(Decision, null=True, blank=True, on_delete=models.CASCADE, related_name="tags")
@@ -427,7 +446,6 @@ class Tag(models.Model):
     topic = models.ForeignKey(Topic, on_delete=models.CASCADE, related_name="tags")
     confidence = models.FloatField(default=0.0)
     classifier_version = models.CharField(max_length=100)
-    is_manual = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

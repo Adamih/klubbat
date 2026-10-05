@@ -7,8 +7,8 @@ from .discover_meetings import _summary
 class Command(BaseCommand):
     help = (
         "Tag decisions and initiative documents with policy-area topics "
-        "(nearest-centroid over Swedish sentence embeddings). Manual tags in "
-        "admin are protected and seed the classifier."
+        "(nearest-centroid over Swedish sentence embeddings). Labelled examples "
+        "in admin guide the classifier; generated tags can all be replaced."
     )
 
     def add_arguments(self, parser):
@@ -33,6 +33,6 @@ class Command(BaseCommand):
         self.stdout.write(
             self.style.SUCCESS(
                 "Ämnestaggar: {topics} ämnen, {tagged} taggade, "
-                "{skipped} redan aktuella, {protected} manuella, {failures} fel.".format(**stats)
+                "{skipped} redan aktuella, {failures} fel.".format(**stats)
             )
         )

@@ -1,6 +1,7 @@
 """Django admin for internal inspection, corrections, and retry actions."""
 
 from django.contrib import admin
+from django.core.exceptions import PermissionDenied
 
 from .models import (
     AgendaItem,
@@ -13,6 +14,7 @@ from .models import (
     DocumentAssociation,
     DocumentVersion,
     IngestionRun,
+    LabelledExample,
     Meeting,
     Tag,
     Topic,
@@ -62,8 +64,14 @@ class AgendaItemAdmin(admin.ModelAdmin):
 class TagInline(admin.TabularInline):
     model = Tag
     extra = 0
-    fields = ("topic", "confidence", "is_manual", "classifier_version")
-    raw_id_fields = ("topic",)
+    fields = ("topic", "confidence", "classifier_version")
+    readonly_fields = fields
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 class DocumentAssociationInline(admin.TabularInline):
@@ -165,20 +173,59 @@ class TopicAdmin(admin.ModelAdmin):
 
 @admin.register(Tag)
 class TagAdmin(admin.ModelAdmin):
-    list_display = ("topic", "target_display", "confidence", "is_manual", "classifier_version")
-    list_filter = ("topic", "is_manual")
+    list_display = ("topic", "target_display", "confidence", "classifier_version")
+    list_filter = ("topic",)
     search_fields = ("decision__decision_text", "decision__printed_agenda_title", "document__title")
     raw_id_fields = ("decision", "document", "topic")
-    help_text = (
-        "Manuell taggning: bock i is_manual — den skyddas mot omklassificering "
-        "och används som träningsdata för centroid-klassificeraren."
-    )
+    actions = ["save_labelled_examples"]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def has_create_example_permission(self, request):
+        return request.user.has_perm("core.add_labelledexample")
+
+    @admin.action(description="Kopiera till märkta exempel (granska ämnet efteråt)", permissions=["create_example"])
+    def save_labelled_examples(self, request, queryset):
+        if not self.has_create_example_permission(request):
+            raise PermissionDenied
+        created = 0
+        for tag in queryset.select_related("decision__document_version", "document__current_version", "topic"):
+            if tag.decision is not None:
+                title = tag.decision.printed_agenda_title
+                text = tag.decision.decision_text
+                source_url = tag.decision.document_version.original_url
+            elif tag.document is not None:
+                title = tag.document.title
+                text = tag.document.current_version.markdown if tag.document.current_version else ""
+                source_url = tag.document.primary_source_url
+            else:
+                continue
+            _, new = LabelledExample.objects.get_or_create(
+                topic=tag.topic, title=title, text=text, source_url=source_url,
+            )
+            created += new
+        self.message_user(request, f"{created} märkta exempel skapade. Granska och korrigera ämnet under Märkta exempel.")
 
     @admin.display(description="Mål")
     def target_display(self, obj):
         if obj.decision is not None:
             return f"beslut: {obj.decision.printed_agenda_title or obj.decision.decision_text[:60]}"
         return f"dok: {obj.document.title[:60]}" if obj.document else "—"
+
+
+@admin.register(LabelledExample)
+class LabelledExampleAdmin(admin.ModelAdmin):
+    list_display = ("title", "topic", "updated_at")
+    list_filter = ("topic",)
+    search_fields = ("title", "text", "source_url")
+    readonly_fields = ("created_at", "updated_at")
 
 
 @admin.register(VoteReservation)

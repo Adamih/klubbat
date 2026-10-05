@@ -1,9 +1,9 @@
-"""Topic classification (stage D): centroid classifier, protection, and UI."""
+"""Topic classification (stage D): examples, generated predictions, and UI."""
 
 import pytest
 from django.urls import reverse
 
-from core.models import Decision, Document, DocumentVersion, Tag, Topic
+from core.models import Decision, Document, DocumentVersion, LabelledExample, Tag, Topic
 from ingestion import classify, pipeline
 from search import service
 
@@ -97,14 +97,14 @@ def test_classifies_decisions_and_documents(stored_version, classified):
     doc_tag = Tag.objects.get(document__isnull=False)
     assert decision_tag.topic.slug == "skola"
     assert doc_tag.topic.slug == "boende"
-    assert decision_tag.classifier_version == classify.CLASSIFIER_VERSION
+    assert decision_tag.classifier_version == classify._classification_version({})
 
     # Stamped targets are skipped on re-run.
     stats2 = pipeline.classify_content(run=pipeline.begin_run("test"))
     assert stats2["tagged"] == 0 and stats2["skipped"] == 2
 
 
-def test_manual_tag_protected_and_used_as_seed(stored_version, classified):
+def test_examples_guide_centroids_without_overriding_source(stored_version, classified):
     document, version = _processed(stored_version)
     decision = _seed_decision(
         version,
@@ -112,12 +112,69 @@ def test_manual_tag_protected_and_used_as_seed(stored_version, classified):
         "Kommunfullmäktige beslutar att anta utredningen om skolresultat.",
     )
     topic = Topic.objects.get_or_create(slug="ekonomi")[0]
-    Tag.objects.create(decision=decision, topic=topic, confidence=1.0,
-                       classifier_version="manual", is_manual=True)
+    example = LabelledExample.objects.create(
+        title=decision.printed_agenda_title, text=decision.decision_text, topic=topic,
+    )
+    before = classify._build_centroids({})["ekonomi"]
+    after = classify._build_centroids(classify._example_texts())["ekonomi"]
+    school_dimension = list(KEYWORDS).index("skola")
+    assert after[school_dimension] > before[school_dimension]
 
     stats = pipeline.classify_content(run=pipeline.begin_run("test"))
-    assert stats["protected"] == 1
-    assert list(decision.tags.values_list("topic__slug", flat=True)) == ["ekonomi"]
+    assert stats["tagged"] == 1
+    assert list(decision.tags.values_list("topic__slug", flat=True)) == ["skola"]
+    stats = pipeline.classify_content(run=pipeline.begin_run("test"), force=True)
+    assert stats["tagged"] == 1
+    example.refresh_from_db()
+    assert example.topic.slug == "ekonomi"
+
+
+def test_example_changes_trigger_reclassification(stored_version, classified):
+    _, version = _processed(stored_version)
+    _seed_decision(version, "Skolpersonal", "Kommunfullmäktige beslutar om skolresultat.")
+    run = pipeline.begin_run("test")
+    pipeline.classify_content(run=run)
+    old_stamp = Tag.objects.get().classifier_version
+    example = LabelledExample.objects.create(
+        title="Skolpersonal", text="Skolresultat", topic=Topic.objects.get(slug="skola"),
+    )
+    assert pipeline.classify_content(run=run)["tagged"] == 1
+    assert Tag.objects.get().classifier_version != old_stamp
+    assert pipeline.classify_content(run=run)["skipped"] == 1
+    example.topic = Topic.objects.get(slug="ekonomi")
+    example.save()
+    assert pipeline.classify_content(run=run)["tagged"] == 1
+    example.text = "Nya avgifter"
+    example.save()
+    assert pipeline.classify_content(run=run)["tagged"] == 1
+    example.delete()
+    assert pipeline.classify_content(run=run)["tagged"] == 1
+    assert Tag.objects.get().classifier_version == old_stamp
+
+
+def test_example_survives_decision_reparsing(stored_version, classified):
+    from ingestion import decisions
+    from django.db import transaction
+
+    _, version = _processed(stored_version)
+    decision = _seed_decision(version, "Skolpersonal", "Kommunfullmäktige beslutar om skolresultat.")
+    topic = classify._ensure_topics()["skola"]
+    example = LabelledExample.objects.create(
+        title=decision.printed_agenda_title, text=decision.decision_text, topic=topic,
+    )
+    pipeline.classify_content(run=pipeline.begin_run("test"))
+    original_pk = decision.pk
+    with transaction.atomic():
+        decisions.store(version, [decisions.ParsedDecision(
+            printed_agenda_number=1, printed_agenda_title="Skolpersonal",
+            decision_text="Kommunfullmäktige beslutar om nya skolresultat.", outcome="annat",
+        )])
+    assert not Decision.objects.filter(pk=original_pk).exists()
+    assert not Tag.objects.exists()
+    example.refresh_from_db()
+    assert example.text == "Kommunfullmäktige beslutar om skolresultat."
+    assert pipeline.classify_content(run=pipeline.begin_run("test"))["tagged"] == 1
+    assert Tag.objects.get().topic.slug == "skola"
 
 
 def test_list_documents_skipped_and_stale_tags_removed(stored_version, classified):
@@ -134,10 +191,10 @@ def test_list_documents_skipped_and_stale_tags_removed(stored_version, classifie
     motion.save(update_fields=["current_version"])
     motion_version.markdown = "Bostäder och hyror behöver öka."
     motion_version.save(update_fields=["markdown"])
-    # A stale non-manual tag left by a previous classifier run must go away.
+    # A stale generated tag left by a previous classifier run must go away.
     stale_topic = Topic.objects.get_or_create(slug="boende")[0]
     Tag.objects.create(document=motion, topic=stale_topic, confidence=0.5,
-                       classifier_version="topic-centroid-v1", is_manual=False)
+                       classifier_version="topic-centroid-v1")
 
     stats = pipeline.classify_content(run=pipeline.begin_run("test"))
     assert stats["stale_removed"] == 1
