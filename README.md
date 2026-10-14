@@ -4,16 +4,17 @@ Sökbart index över svenska kommunfullmäktige-protokoll, motioner och bilagor.
 MVP-omfattning: **Uppsala kommunfullmäktige**, backfill år **2025** + löpande
 upptäckt av nya dokument. All data är allmänna handlingar från uppsala.se.
 
-## Kom igång (Windows, Git Bash)
+## Kom igång (Linux)
 
-Krav: [uv](https://docs.astral.sh/uv/) och Tesseract-OCR (UB-Mannheim-build)
-installerade (används av xberg för OCR av scanade sidor). Svenska språkdata
-ligger projektlokalt i `tessdata/` (tillsammans med `eng`/`osd` och Tesseracts
-`configs/`), och pekas ut via `TESSDATA_PREFIX` av koden — inget behöver
-installeras i Program Files.
+Krav: [mise](https://mise.jdx.dev/) (eller [uv](https://docs.astral.sh/uv/)
+direkt med Python 3.14). `mise.toml` pinnar Python och uv. Ingen
+systeminstallation av Tesseract behövs: xberg har Tesseract inbyggt, och
+svenska språkdata ligger projektlokalt i `tessdata/` (tillsammans med
+`eng`/`osd` och Tesseracts `configs/`), utpekat via `TESSDATA_PREFIX` i koden.
 
 ```bash
-uv sync                                    # installera beroenden
+mise trust && mise install                 # första gången: Python 3.14 + uv
+uv sync                                    # installera beroenden (--group dev för pytest)
 uv run python manage.py migrate            # skapa SQLite-databasen (data/db.sqlite3)
 uv run python manage.py seed_sources       # idempotent: skapa Authority/Body-rader
 uv run python manage.py backfill --year 2025   # hämta + extrahera ett helt år
@@ -21,6 +22,11 @@ uv run python manage.py runserver          # http://127.0.0.1:8000/
 ```
 
 Skapa en adminanvändare för /admin/: `uv run python manage.py createsuperuser`.
+
+Under OCR skriver Tesseract `Empty page!!` till stderr för sidor utan text
+(tomma sidor, kartor, bilder). Det är ofarligt; verkliga extraktionsfel syns
+i `data/logs/app.log` och på `/status/`. Filtrera bort raden vid behov:
+`... backfill --year 2025 2> >(grep -v 'Empty page!!' >&2)`.
 
 ## Kommandon
 
@@ -41,17 +47,19 @@ Skapa en adminanvändare för /admin/: `uv run python manage.py createsuperuser`
 Alla ingestionkommandon tar ett lås (`data/ingestion.lock`); överlappande
 körningar avvisas, och en låst process med död PID bryts automatiskt.
 
-## Schemaläggning (Windows Task Scheduler)
+## Schemaläggning (cron)
 
 Uppdateringar sker genom att köra `ingest_recent` regelbundet, t.ex. varje
-dygn. I Aktivitetsschemaläggaren skapar du en uppgift som kör:
+dygn. Anropa venv:ens Python direkt så att cron inte behöver mise/uv i `PATH`
+(`crontab -e`):
 
 ```
-C:\Users\adami\Code\political-intelligence\.venv\Scripts\python.exe C:\Users\adami\Code\political-intelligence\manage.py ingest_recent --days 60
+0 3 * * * cd /home/adami/Work/political-intelligence && .venv/bin/python manage.py ingest_recent --days 60
+0 4 * * 0 cd /home/adami/Work/political-intelligence && .venv/bin/python manage.py backup_database
 ```
 
-med arbetskatalog `C:\Users\adami\Code\political-intelligence`. Lägg gärna in
-`backup_database` som separat, veckovis schemalagt kommando.
+Den andra raden kör `backup_database` veckovis. En systemd user-timer fungerar
+lika bra om du föredrar det.
 
 ## Backup och återställning
 
@@ -69,7 +77,9 @@ dyra att återskapa) kopieras som standard till `backups/derived-<tidsstämpel>/
 1. Stoppa servern/schemalagda jobb.
 2. Kopiera `backups/db-<stamp>.sqlite3` till `data/db.sqlite3` (ta bort
    `db.sqlite3-wal`/`-shm` om de finns kvar från en krasch).
-3. `--originals`-kopieras tillbaka: `xcopy /E /I backups\originals-<stamp> data\originals`.
+3. `--originals`-kopieras tillbaka: `cp -a backups/originals-<stamp>/. data/originals/`. Kopiera på samma sätt
+   tillbaka `backups/derived-<stamp>/` till `data/derived/` för att slippa
+   göra om OCR.
 4. Starta servern och kör `uv run python manage.py rebuild_search_index` om
    sökindex och chunks inte längre matchar (koll: sidan /status/).
 

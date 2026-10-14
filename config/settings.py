@@ -103,7 +103,6 @@ RECENT_WINDOW_DAYS = int(os.environ.get("RECENT_WINDOW_DAYS", "60"))
 
 # --- OCR toolchain (tesseract, used by xberg for scanned pages) ---
 TESSDATA_PREFIX = str(BASE_DIR / "tessdata")
-TESSERACT_DIR = os.environ.get("TESSERACT_DIR", r"C:\Program Files\Tesseract-OCR")
 
 # --- Logging: console INFO, rotating file DEBUG ---
 LOG_DIR.mkdir(parents=True, exist_ok=True)
