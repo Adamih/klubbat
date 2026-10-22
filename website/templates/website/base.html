@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}Politisk dokumentintelligens{% endblock %}</title>
+    <title>{% block title %}Klubbat{% endblock %}</title>
     <link rel="stylesheet" href="{% static 'css/site.css' %}">
     <script src="{% static 'vendor/htmx.min.js' %}" defer></script>
     <script src="{% static 'js/ai.js' %}" defer></script>
@@ -12,7 +12,7 @@
 </head>
 <body>
 <header class="site-header">
-    <a class="brand" href="{% url 'website:search' %}">Politisk dokumentintelligens</a>
+    <a class="brand" href="{% url 'website:search' %}">Klubbat</a>
     <nav>
         <a href="{% url 'website:search' %}">Sök</a>
         <a href="{% url 'website:meetings' %}">Möten</a>

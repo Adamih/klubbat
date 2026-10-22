@@ -1,4 +1,4 @@
-# Politisk dokumentintelligens — MVP
+# Klubbat — MVP
 
 Sökbart index över svenska kommunfullmäktige-protokoll, motioner och bilagor.
 MVP-omfattning: **Uppsala kommunfullmäktige**, backfill år **2025** + löpande
@@ -54,8 +54,8 @@ dygn. Anropa venv:ens Python direkt så att cron inte behöver mise/uv i `PATH`
 (`crontab -e`):
 
 ```
-0 3 * * * cd /home/adami/Work/political-intelligence && .venv/bin/python manage.py ingest_recent --days 60
-0 4 * * 0 cd /home/adami/Work/political-intelligence && .venv/bin/python manage.py backup_database
+0 3 * * * cd /home/adami/Work/klubbat && .venv/bin/python manage.py ingest_recent --days 60
+0 4 * * 0 cd /home/adami/Work/klubbat && .venv/bin/python manage.py backup_database
 ```
 
 Den andra raden kör `backup_database` veckovis. En systemd user-timer fungerar

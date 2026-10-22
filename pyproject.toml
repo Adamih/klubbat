@@ -1,7 +1,7 @@
 [project]
-name = "political-intelligence"
+name = "klubbat"
 version = "0.1.0"
-description = "Political intelligence platform for Swedish municipal and regional meeting documents (MVP: Uppsala kommunfullmäktige)"
+description = "Searchable decisions, votes and documents from Swedish municipal and regional meetings (MVP: Uppsala kommunfullmäktige)"
 requires-python = ">=3.12"
 dependencies = [
     "django>=6.0,<7",

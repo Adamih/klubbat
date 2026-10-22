@@ -1,4 +1,4 @@
-"""Django settings for the political-intelligence MVP."""
+"""Django settings for the Klubbat MVP."""
 
 import os
 from pathlib import Path
@@ -92,7 +92,7 @@ STATIC_URL = "static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 
 # --- Ingestion behaviour ---
-SOURCE_USER_AGENT = "political-intelligence-mvp/0.1 (public-document research)"
+SOURCE_USER_AGENT = "klubbat-mvp/0.1 (public-document research)"
 DOWNLOAD_CONCURRENCY = int(os.environ.get("DOWNLOAD_CONCURRENCY", "4"))
 DOWNLOAD_TIMEOUT = (15.0, 90.0)  # (connect, read) seconds
 DOWNLOAD_RETRIES = 3
